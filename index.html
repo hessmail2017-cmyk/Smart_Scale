@@ -1,0 +1,2244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#07111f">
+  <title>Distance Twin | Live IoT Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#07111f; --panel:#0d1b2d; --panel2:#10233a; --line:#1c3550;
+      --text:#edf6ff; --muted:#8da5bd; --cyan:#55dff0; --blue:#5798ff;
+      --green:#48dfaa; --amber:#ffc66d; --red:#ff7185; --violet:#a98bff;
+      --shadow:0 18px 50px rgba(0,0,0,.22);
+    }
+    * { box-sizing:border-box }
+    body {
+      margin:0; min-height:100vh; color:var(--text);
+      font-family:Manrope,system-ui,sans-serif;
+      background:
+        radial-gradient(ellipse at 8% 0%,rgba(43,130,190,.16),transparent 35%),
+        radial-gradient(ellipse at 95% 12%,rgba(45,205,190,.10),transparent 28%),
+        var(--bg);
+    }
+    .shell { width:min(1240px,calc(100% - 36px)); margin:0 auto; padding:30px 0 42px }
+    header { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:26px }
+    .brand { display:flex; align-items:center; gap:14px }
+    .logo {
+      width:48px;height:48px;border-radius:15px;display:grid;place-items:center;
+      background:linear-gradient(145deg,#173c5a,#0d263b);border:1px solid #2a5874;
+      color:var(--cyan);box-shadow:0 8px 25px #0005;
+    }
+    .logo svg { width:27px;height:27px }
+    h1 { font-size:clamp(20px,3vw,27px);letter-spacing:-.8px;margin:0;font-weight:800 }
+    .eyebrow { color:var(--cyan);font:11px "DM Mono",monospace;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px }
+    .subhead { color:var(--muted);font-size:12px;margin-top:4px }
+    .header-right { display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end }
+    .pill { display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:#0b1a2b;color:var(--muted);font-size:11px;font-weight:700 }
+    .dot { width:7px;height:7px;border-radius:50%;background:#71869a;box-shadow:0 0 0 4px #71869a1c }
+    .dot.live { background:var(--green);box-shadow:0 0 0 4px #48dfaa20 }
+    .dot.bad { background:var(--red);box-shadow:0 0 0 4px #ff718520 }
+    .hero { display:grid;grid-template-columns:1.35fr .65fr;gap:18px;margin-bottom:18px }
+    .panel {
+      background:linear-gradient(145deg,rgba(16,35,58,.96),rgba(10,25,42,.96));
+      border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);
+    }
+    .main-reading { padding:26px 28px;position:relative;overflow:hidden;min-height:250px }
+    .main-reading:after {
+      content:"";position:absolute;width:260px;height:260px;border-radius:50%;
+      right:-80px;top:-115px;border:1px solid #55dff01c;
+      box-shadow:0 0 0 28px #55dff008,0 0 0 58px #55dff006;pointer-events:none
+    }
+    .section-label { color:var(--muted);font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase }
+    .reading-row { display:flex;align-items:baseline;gap:12px;margin:22px 0 14px }
+    .reading { font-size:clamp(58px,9vw,94px);line-height:.95;font-weight:800;letter-spacing:-5px;color:var(--cyan);text-shadow:0 0 34px #55dff025 }
+    .unit { color:#9cb5ca;font:16px "DM Mono",monospace }
+    .status-line { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
+    .state-tag { border-radius:999px;padding:7px 11px;font:11px "DM Mono",monospace;background:#163b3b;color:var(--green);border:1px solid #285b56 }
+    .reading-note { color:var(--muted);font-size:12px }
+    .side-card { padding:24px;display:flex;flex-direction:column;justify-content:space-between;gap:24px }
+    .signal-value { font:28px "DM Mono",monospace;margin-top:10px }
+    .signal-caption { color:var(--muted);font-size:12px;margin-top:5px }
+    .signal-bars { display:flex;gap:5px;align-items:flex-end;height:34px;margin-top:12px }
+    .signal-bars i { display:block;width:8px;border-radius:4px;background:#24415c;height:12px }
+    .signal-bars i:nth-child(1){height:10px}.signal-bars i:nth-child(2){height:16px}.signal-bars i:nth-child(3){height:22px}.signal-bars i:nth-child(4){height:28px}.signal-bars i:nth-child(5){height:34px}
+    .grid3 { display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px }
+    .metric { padding:19px 21px }
+    .metric-value { font:25px "DM Mono",monospace;margin-top:12px }
+    .metric-foot { color:var(--muted);font-size:11px;margin-top:5px }
+
+    /* ---------- normalized distance panel ---------- */
+    .norm { margin-bottom:18px;padding:24px 26px;display:grid;grid-template-columns:.8fr 1.5fr;gap:28px }
+    .norm-left { display:flex;flex-direction:column;gap:10px }
+    .norm-value { font-size:clamp(48px,7vw,72px);line-height:1;font-weight:800;letter-spacing:-3px;color:var(--violet);text-shadow:0 0 30px #a98bff25;font-variant-numeric:tabular-nums }
+    .norm-sub { color:var(--muted);font-size:12px;line-height:1.6 }
+    .formula { font:11px "DM Mono",monospace;color:#b9c9da;background:#081727;border:1px solid #1d3650;border-radius:10px;padding:10px 12px;line-height:1.7;overflow-wrap:anywhere }
+    .norm-right { display:flex;flex-direction:column;gap:16px;min-width:0 }
+    .twin-track { position:relative;height:74px;border-radius:14px;background:#081727;border:1px solid #1d3650;overflow:hidden }
+    .twin-fill { position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,rgba(169,139,255,.05),rgba(169,139,255,.28));transition:width .25s ease }
+    .twin-sensor { position:absolute;left:0;top:0;bottom:0;width:30px;background:#173c5a;border-right:1px solid #2a5874;display:grid;place-items:center;color:var(--cyan);font:700 9px "DM Mono",monospace;writing-mode:vertical-rl;letter-spacing:1px }
+    .twin-obj { position:absolute;top:12px;bottom:12px;width:16px;margin-left:-8px;border-radius:5px;background:var(--violet);box-shadow:0 0 18px #a98bff88;left:30px;transition:left .25s ease }
+    .twin-ticks { position:absolute;left:30px;right:0;bottom:0;height:10px;display:flex;justify-content:space-between;padding:0 4px;pointer-events:none }
+    .twin-ticks i { width:1px;height:6px;background:#2c4863 }
+    .twin-scale { display:flex;justify-content:space-between;color:var(--muted);font:10px "DM Mono",monospace;margin-top:-8px;padding-left:30px }
+    .norm-chart-wrap { height:110px;position:relative }
+    .norm-controls { display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end }
+    .field { display:flex;flex-direction:column;gap:5px }
+    .field label { color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.4px }
+    .field input,.field select { width:100px;padding:9px 10px;border-radius:10px;border:1px solid #29445e;background:#081727;color:var(--text);font:11px "DM Mono",monospace;outline:none }
+    .field select { width:150px }
+    .field input:focus,.field select:focus { border-color:var(--violet) }
+    .range-tag { font:10px "DM Mono",monospace;color:var(--amber) }
+
+    /* ---------- NEW: forecast + GA panels ---------- */
+    .ai-grid { display:grid;grid-template-columns:1.4fr .9fr;gap:18px;margin-bottom:18px }
+    .ai-panel { padding:22px 24px;min-width:0;display:flex;flex-direction:column;gap:16px }
+    .ai-chart { height:215px;position:relative }
+    .ai-chart.short { height:150px }
+    .ai-legend { display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font:10px "DM Mono",monospace }
+    .ai-legend span { display:inline-flex;align-items:center;gap:7px }
+    .ai-legend i { display:inline-block;width:18px;height:0;border-top:2px solid var(--violet) }
+    .ai-legend i.fc { border-top:2px dashed var(--amber) }
+    .ai-legend i.mean { border-top:2px dashed var(--muted) }
+    .ai-legend i.best { border-top:2px solid var(--green) }
+    .ai-stats { display:grid;grid-template-columns:repeat(4,1fr);gap:10px }
+    .ai-stats.three { grid-template-columns:repeat(3,1fr) }
+    .stat { background:#081727;border:1px solid #1d3650;border-radius:12px;padding:11px 12px }
+    .stat b { display:block;font:15px "DM Mono",monospace;margin-top:6px;color:var(--text);font-weight:500 }
+    .stat em { font-style:normal;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.4px }
+    .progress { height:6px;border-radius:99px;background:#0a1929;border:1px solid #172e45;overflow:hidden }
+    .progress div { height:100%;width:0%;background:linear-gradient(90deg,var(--green),var(--cyan));transition:width .2s ease }
+    .ga-result { display:flex;align-items:baseline;gap:12px;flex-wrap:wrap }
+    .ga-big { font-size:clamp(34px,5vw,48px);font-weight:800;letter-spacing:-2px;color:var(--green);font-variant-numeric:tabular-nums;line-height:1 }
+    .note { color:var(--muted);font-size:11px;line-height:1.6 }
+
+    /* ---------- fuzzy + JSON panels ---------- */
+    .fz { margin-bottom:18px;padding:24px 26px;display:grid;grid-template-columns:.9fr 1.4fr;gap:28px }
+    .fz-left,.fz-right { display:flex;flex-direction:column;gap:16px;min-width:0 }
+    .mf-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px }
+    .mf-box { background:#081727;border:1px solid #1d3650;border-radius:12px;padding:10px 12px;min-width:0 }
+    .mf-box .ai-chart { height:125px }
+    .mf-title { color:var(--muted);font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px }
+    .rule-row { display:grid;grid-template-columns:1fr 90px 40px;gap:10px;align-items:center;font-size:11px;padding:7px 0;border-bottom:1px solid #1b334b }
+    .rule-row:last-child { border-bottom:0 }
+    .rule-text { color:var(--muted);line-height:1.5 }
+    .rule-text b { color:var(--text);font-weight:700 }
+    .rule-bar { height:6px;border-radius:99px;background:#0a1929;border:1px solid #172e45;overflow:hidden }
+    .rule-bar i { display:block;height:100%;width:0%;background:var(--amber);transition:width .2s ease }
+    .rule-val { font:10px "DM Mono",monospace;color:var(--muted);text-align:right }
+    .json-panel { margin-top:18px;padding:22px 24px;display:flex;flex-direction:column;gap:14px }
+    pre.json { margin:0;background:#081727;border:1px solid #1d3650;border-radius:14px;padding:16px 18px;font:11px/1.65 "DM Mono",monospace;color:#c9d8e8;max-height:420px;overflow:auto;white-space:pre }
+    .jk { color:var(--cyan) } .js { color:var(--green) } .jn { color:var(--amber) } .jb { color:var(--violet) }
+    .check { display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;font-weight:700;cursor:pointer }
+    .check input { width:auto }
+
+    .content-grid { display:grid;grid-template-columns:1.45fr .75fr;gap:18px }
+    .chart-panel { padding:22px 22px 16px;min-height:330px }
+    .panel-head { display:flex;justify-content:space-between;align-items:center;gap:12px }
+    .panel-title { font-size:14px;font-weight:800 }
+    .panel-desc { color:var(--muted);font-size:11px;margin-top:4px;line-height:1.5 }
+    .chart-wrap { height:235px;position:relative;margin-top:18px }
+    canvas { width:100%;height:100%;display:block }
+    .chart-legend { color:var(--muted);font:10px "DM Mono",monospace }
+    .connection-panel { padding:22px }
+    .connection-row { display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid #1b334b;gap:12px }
+    .connection-row:last-of-type { border-bottom:0 }
+    .connection-label { color:var(--muted);font-size:12px }
+    .connection-value { font:11px "DM Mono",monospace;text-align:right;overflow-wrap:anywhere;max-width:60% }
+    .actions { display:flex;gap:9px;flex-wrap:wrap;margin-top:18px }
+    button {
+      border:1px solid #2a506d;background:#14324c;color:var(--text);border-radius:12px;
+      padding:11px 14px;font:700 11px Manrope,sans-serif;cursor:pointer;transition:.18s ease
+    }
+    button:hover { transform:translateY(-1px);border-color:var(--cyan);background:#17405a }
+    button.primary { color:#04131d;background:linear-gradient(100deg,var(--cyan),#76baff);border:0 }
+    button.violet { color:#12091f;background:linear-gradient(100deg,var(--violet),#c9b8ff);border:0 }
+    button.green { color:#04170f;background:linear-gradient(100deg,var(--green),#8af0cb);border:0 }
+    button:disabled { opacity:.45;cursor:not-allowed;transform:none }
+    .feed { margin-top:18px;padding:21px 22px }
+    .feed-head { display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px }
+    .feed-list { display:grid;gap:8px;max-height:190px;overflow:auto }
+    .feed-item { display:grid;grid-template-columns:90px 1fr auto auto;gap:12px;align-items:center;padding:10px 12px;background:#0a1929;border:1px solid #172e45;border-radius:11px;font-size:11px }
+    .feed-time,.feed-value,.feed-norm {font-family:"DM Mono",monospace;color:var(--muted)}
+    .feed-value {color:var(--cyan)}
+    .feed-norm {color:var(--violet)}
+    .empty { color:var(--muted);font-size:12px;padding:14px 0 }
+    .connect-box { margin-bottom:18px;padding:18px 20px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center }
+    .connect-copy strong {font-size:13px}.connect-copy p {margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.6}
+    .connect-controls {display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .connect-controls input { width:145px;min-width:0;padding:10px 11px;border-radius:10px;border:1px solid #29445e;background:#081727;color:var(--text);font:11px "DM Mono",monospace;outline:none }
+    .connect-controls input:focus {border-color:var(--cyan)}
+    footer {display:flex;justify-content:space-between;gap:12px;color:#647f98;font-size:10px;margin-top:24px;flex-wrap:wrap}
+    .toast {position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:11px 15px;border-radius:11px;background:#173b4b;border:1px solid #2b6172;color:#dffaff;font-size:12px;opacity:0;pointer-events:none;transition:.2s;z-index:10}
+    .toast.show {opacity:1}
+    @media(max-width:850px){.hero,.content-grid,.norm,.ai-grid,.fz{grid-template-columns:1fr}.side-card{flex-direction:row}.grid3{grid-template-columns:1fr 1fr 1fr}}
+    @media(max-width:600px){
+      .shell{width:min(100% - 22px,1240px);padding-top:18px}
+      header{align-items:flex-start}.header-right{max-width:130px}
+      .hero{gap:12px}.main-reading{padding:22px;min-height:220px}
+      .grid3{gap:8px}.metric{padding:15px 12px}.metric-value{font-size:19px}
+      .connect-box{grid-template-columns:1fr}.connect-controls{justify-content:flex-start}
+      .connect-controls input{flex:1;width:100px}.side-card{flex-direction:row}
+      .norm{padding:20px 18px}.ai-panel,.json-panel{padding:20px 18px}.fz{padding:20px 18px}.mf-grid{grid-template-columns:1fr}
+      .ai-stats{grid-template-columns:1fr 1fr}.ai-stats.three{grid-template-columns:1fr 1fr}
+      .feed-item{grid-template-columns:68px 1fr auto auto;gap:6px}
+    }
+    /* ---------- computing continuum ---------- */
+    .cc { margin-top:18px;margin-bottom:18px;padding:24px 26px;display:flex;flex-direction:column;gap:18px }
+    .cc-flow { display:flex;align-items:stretch;gap:8px;flex-wrap:wrap }
+    .cc-node { flex:1 1 140px;background:#081727;border:1px solid #1d3650;border-top:3px solid var(--c,#55dff0);border-radius:12px;padding:10px 12px }
+    .cc-node em { font-style:normal;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase }
+    .cc-node b { display:block;font:15px "DM Mono",monospace;font-weight:500;margin-top:5px }
+    .cc-arrow { align-self:center;color:#46647f;font:16px "DM Mono",monospace }
+    .cc-span { display:grid;grid-template-columns:1fr 1fr;gap:8px }
+    .cc-span div { background:#0a1929;border:1px dashed #28445e;border-radius:10px;padding:8px 12px;color:var(--muted);font-size:10.5px;line-height:1.5 }
+    .cc-span div b { color:var(--text) }
+    .cc-cards { display:grid;grid-template-columns:repeat(3,1fr);gap:14px }
+    .cc-card { background:linear-gradient(160deg,#0b1a2b,#0a1626);border:1px solid #1d3650;border-top:3px solid var(--c);border-radius:16px;padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px;min-width:0 }
+    .cc-top { display:flex;align-items:center;justify-content:space-between;gap:8px }
+    .cc-badge { font:700 10px "DM Mono",monospace;letter-spacing:1.4px;color:var(--c);border:1px solid var(--c);border-radius:999px;padding:4px 9px;text-transform:uppercase;white-space:nowrap }
+    .cc-where { color:var(--muted);font-size:10px;text-align:right }
+    .cc-duty { color:#b9c9da;font-size:11.5px;line-height:1.6 }
+    .cc-duty b { color:var(--text) }
+    .cc-kv { display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid #172e45;font-size:11px;color:var(--muted) }
+    .cc-kv b { font:11px "DM Mono",monospace;color:var(--text);font-weight:500;text-align:right;overflow-wrap:anywhere }
+    .cc-two { display:grid;grid-template-columns:1.4fr 1fr;gap:18px }
+    .cc-block { background:#0a1929;border:1px solid #172e45;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0 }
+    .cc-table-wrap { overflow-x:auto }
+    table.cc-table { width:100%;border-collapse:collapse }
+    .cc-table th { text-align:left;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #1d3650;white-space:nowrap }
+    .cc-table td { padding:8px;border-bottom:1px solid #14283d;font:11px "DM Mono",monospace;color:#c9d8e8;white-space:nowrap }
+    .cc-table td.t { font-family:Manrope,sans-serif;white-space:normal;color:var(--text);font-weight:600;min-width:170px }
+    .cc-table td.t small { display:block;color:var(--muted);font-weight:500;font-size:10px;margin-top:2px }
+    .cc-table td.no { color:#5d7791 }
+    .cc-table td.sel { color:#04131d;font-weight:700 }
+    .chip { display:inline-block;border-radius:999px;padding:4px 9px;font:700 10px "DM Mono",monospace;letter-spacing:.5px }
+    .funnel-row { display:grid;grid-template-columns:140px 1fr 92px;gap:10px;align-items:center;font-size:11px;color:var(--muted) }
+    .funnel-bar { height:10px;border-radius:99px;background:#081727;border:1px solid #172e45;overflow:hidden }
+    .funnel-bar i { display:block;height:100%;width:0%;background:var(--c);transition:width .3s ease }
+    .funnel-row b { font:11px "DM Mono",monospace;color:var(--text);font-weight:500;text-align:right }
+    .ai-stats.five { grid-template-columns:repeat(5,1fr) }
+    .stat small { display:block;margin-top:5px;color:var(--muted);font-size:10px;line-height:1.4 }
+    .ioe-events { display:grid;gap:7px;max-height:230px;overflow:auto }
+    .ioe-ev { display:grid;grid-template-columns:62px 1fr auto;gap:10px;align-items:center;padding:9px 11px;background:#081727;border:1px solid #172e45;border-radius:10px;font-size:11px }
+    .ioe-ev .time { font:10px "DM Mono",monospace;color:var(--muted) }
+    .ioe-ev small { display:block;color:var(--muted);font-size:10px;margin-top:2px;line-height:1.4 }
+    @media(max-width:850px){ .cc-cards{grid-template-columns:1fr 1fr}.cc-two{grid-template-columns:1fr} }
+    @media(max-width:600px){ .cc{padding:20px 18px}.cc-cards{grid-template-columns:1fr}.ai-stats.five{grid-template-columns:1fr 1fr}.funnel-row{grid-template-columns:100px 1fr 80px}.cc-arrow{display:none} }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h3l2.2-6 4.1 12 2.2-6H21"/>
+            <circle cx="12" cy="12" r="10"/>
+          </svg>
+        </div>
+        <div>
+          <div class="eyebrow">Internet of Things / Digital Twin</div>
+          <h1>Distance Twin</h1>
+          <div class="subhead">Real-time spatial monitoring · ESP32 + HC-SR04</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="pill"><span class="dot" id="mqttDot"></span><span id="headerStatus">OFFLINE</span></div>
+        <div class="pill">DEVICE <span style="color:var(--cyan)" id="deviceBadge">DIST-01</span></div>
+      </div>
+    </header>
+
+    <section class="panel connect-box">
+      <div class="connect-copy">
+        <strong>Secure cloud connection</strong>
+        <p>Enter a dedicated read-only EMQX account. Credentials are used in this browser session only and are not saved in this page.</p>
+      </div>
+      <div class="connect-controls">
+        <input id="mqttUser" autocomplete="username" placeholder="MQTT username" aria-label="MQTT username">
+        <input id="mqttPass" type="password" autocomplete="current-password" placeholder="MQTT password" aria-label="MQTT password">
+        <button class="primary" id="connectBtn" onclick="connectMQTT()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnectMQTT()" disabled>Disconnect</button>
+      </div>
+    </section>
+
+    <section class="hero">
+      <div class="panel main-reading">
+        <div class="section-label">Live measured distance</div>
+        <div class="reading-row"><div class="reading" id="distanceValue">--.-</div><div class="unit">CENTIMETERS</div></div>
+        <div class="status-line">
+          <span class="state-tag" id="rangeState">WAITING FOR DATA</span>
+          <span class="reading-note" id="lastUpdate">No measurements received yet</span>
+        </div>
+      </div>
+      <div class="panel side-card">
+        <div>
+          <div class="section-label">Wi-Fi signal strength</div>
+          <div class="signal-value" id="rssiValue">-- dBm</div>
+          <div class="signal-caption" id="signalQuality">Waiting for device telemetry</div>
+          <div class="signal-bars" id="signalBars"><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div>
+          <div class="section-label">Device uptime</div>
+          <div class="signal-value" id="uptimeValue">--:--:--</div>
+          <div class="signal-caption">Since last device restart</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid3">
+      <div class="panel metric"><div class="section-label">Session minimum</div><div class="metric-value" id="minValue">--.- cm</div><div class="metric-foot">Lowest received measurement</div></div>
+      <div class="panel metric"><div class="section-label">Session average</div><div class="metric-value" id="avgValue">--.- cm</div><div class="metric-foot">Average of valid readings</div></div>
+      <div class="panel metric"><div class="section-label">Session maximum</div><div class="metric-value" id="maxValue">--.- cm</div><div class="metric-foot">Highest received measurement</div></div>
+    </section>
+
+    <!-- ========== NORMALIZED DISTANCE ========== -->
+    <section class="panel norm" aria-label="Normalized distance">
+      <div class="norm-left">
+        <div class="section-label">Normalized distance (0 – 1)</div>
+        <div class="norm-value" id="normValue">0.000</div>
+        <div class="status-line">
+          <span class="range-tag" id="normFlag">WAITING FOR DATA</span>
+        </div>
+        <div class="formula" id="formulaText">n = clamp((d − d<sub>min</sub>) / (d<sub>max</sub> − d<sub>min</sub>), 0, 1)</div>
+        <div class="norm-sub">0 means the object is at the near limit, 1 means it is at the far limit of the calibrated range. The reading is clamped, so values outside the range never leave 0–1.</div>
+      </div>
+
+      <div class="norm-right">
+        <div>
+          <div class="twin-track" aria-hidden="true">
+            <div class="twin-fill" id="twinFill"></div>
+            <div class="twin-sensor">HC-SR04</div>
+            <div class="twin-obj" id="twinObj"></div>
+            <div class="twin-ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="twin-scale" aria-hidden="true"><span>0.0</span><span>0.25</span><span>0.5</span><span>0.75</span><span>1.0</span></div>
+        </div>
+
+        <div class="norm-chart-wrap"><canvas id="normChart"></canvas></div>
+
+        <div class="norm-controls">
+          <div class="field"><label for="cfgMin">Near limit d<sub>min</sub> (cm)</label><input id="cfgMin" type="number" step="0.1" value="2" min="0"></div>
+          <div class="field"><label for="cfgMax">Far limit d<sub>max</sub> (cm)</label><input id="cfgMax" type="number" step="1" value="400" min="1"></div>
+          <div class="field"><label for="cfgMode">Output meaning</label>
+            <select id="cfgMode">
+              <option value="distance">Distance (0 near → 1 far)</option>
+              <option value="proximity">Proximity (1 near → 0 far)</option>
+            </select>
+          </div>
+          <div class="field"><label for="cfgAlpha">Smoothing α (0.05–1)</label><input id="cfgAlpha" type="number" step="0.05" value="1" min="0.05" max="1"></div>
+          <button onclick="applyNormConfig()">Apply</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== NEW: ROLLING FORECAST (NN) + GENETIC ALGORITHM ========== -->
+    <section class="ai-grid">
+      <div class="panel ai-panel" aria-label="Rolling neural-network forecast">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Rolling forecast · neural network</div>
+            <div class="panel-desc">A multilayer perceptron predicts the next H normalized values at once. After H real measurements arrive, the oldest H points leave the training window, the H new ones enter, and the next H are predicted.</div>
+          </div>
+          <div class="chart-legend" id="fcStatus">IDLE</div>
+        </div>
+
+        <div class="ai-chart"><canvas id="fcChart"></canvas></div>
+        <div class="ai-legend">
+          <span><i></i>Measured (normalized)</span>
+          <span><i class="fc"></i>Forecast</span>
+        </div>
+
+        <div class="ai-stats">
+          <div class="stat"><em>BLOCK PROGRESS</em><b id="fcProg">--</b></div>
+          <div class="stat"><em>RMSE (ALL BLOCKS)</em><b id="fcRmse">--</b></div>
+          <div class="stat"><em>MAE (ALL BLOCKS)</em><b id="fcMae">--</b></div>
+          <div class="stat"><em>SKILL VS NAIVE</em><b id="fcSkill">--</b></div>
+        </div>
+
+        <div class="norm-controls">
+          <div class="field"><label for="fcHorizon">Horizon H (steps)</label>
+            <select id="fcHorizon" onchange="onHorizonChange()" style="width:110px">
+              <option value="10">10 steps</option>
+              <option value="50">50 steps</option>
+            </select>
+          </div>
+          <div class="field"><label for="fcWindow">Training window (steps)</label><input id="fcWindow" type="number" value="200" min="60" step="10"></div>
+          <div class="field"><label for="fcLook">Look-back L (steps)</label><input id="fcLook" type="number" value="20" min="3" max="60"></div>
+          <div class="field"><label for="fcHidden">Hidden neurons</label><input id="fcHidden" type="number" value="8" min="2" max="32"></div>
+          <div class="field"><label for="fcLr">Learning rate</label><input id="fcLr" type="number" value="0.01" step="0.001" min="0.0005" max="0.1"></div>
+          <button class="violet" id="fcBtn" onclick="toggleForecast()">Start forecast</button>
+          <button id="demoBtn" onclick="toggleDemo()">Start demo signal</button>
+        </div>
+        <div class="note">Forecasts are made on the normalized value. “Skill vs naive” compares the network with the simplest predictor (repeat the last value): above 0% means the network is better. The demo signal is synthetic and is only for testing without hardware.</div>
+      </div>
+
+      <div class="panel ai-panel" aria-label="Genetic algorithm optimisation">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Genetic algorithm · optimum look-back time</div>
+            <div class="panel-desc">Searches for the look-back length (time window), hidden neurons and learning rate that give the lowest validation error on the current training window.</div>
+          </div>
+          <div class="chart-legend" id="gaStatus">IDLE</div>
+        </div>
+
+        <div class="ga-result"><div class="ga-big" id="gaTime">-- s</div><div class="reading-note" id="gaSteps">Run the optimiser to find the optimum time window</div></div>
+
+        <div class="ai-chart short"><canvas id="gaChart"></canvas></div>
+        <div class="ai-legend">
+          <span><i class="best"></i>Best RMSE</span>
+          <span><i class="mean"></i>Population mean</span>
+        </div>
+        <div class="progress" aria-hidden="true"><div id="gaBar"></div></div>
+
+        <div class="ai-stats three">
+          <div class="stat"><em>LOOK-BACK L</em><b id="gaL">--</b></div>
+          <div class="stat"><em>HIDDEN</em><b id="gaH">--</b></div>
+          <div class="stat"><em>LEARN. RATE</em><b id="gaLr">--</b></div>
+          <div class="stat"><em>BEST RMSE</em><b id="gaRmse">--</b></div>
+          <div class="stat"><em>NAIVE RMSE</em><b id="gaNaive">--</b></div>
+          <div class="stat"><em>IMPROVEMENT</em><b id="gaGain">--</b></div>
+        </div>
+
+        <div class="norm-controls">
+          <div class="field"><label for="gaPop">Population</label><input id="gaPop" type="number" value="12" min="6" max="40"></div>
+          <div class="field"><label for="gaGen">Generations</label><input id="gaGen" type="number" value="8" min="3" max="30"></div>
+          <button class="green" id="gaBtn" onclick="runGA()">Run GA optimisation</button>
+        </div>
+        <div class="note">Operators: tournament selection (k = 3), blend crossover, Gaussian mutation, elitism of 2. Fitness is the validation RMSE on the most recent 25% of the window. The best values are copied into the forecaster automatically.</div>
+      </div>
+    </section>
+
+    <!-- ========== NEW: FUZZY PROXIMITY ALERT ========== -->
+    <section class="panel fz" aria-label="Fuzzy proximity alert">
+      <div class="fz-left">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">Fuzzy inference · proximity alert</div>
+            <div class="panel-desc">Responsibility: turn the object's position and approach speed into one proximity alert level (0–100) that a person can act on. Mamdani inference with 9 rules and centroid defuzzification.</div>
+          </div>
+        </div>
+        <div class="ga-result"><div class="ga-big" id="fzLevel" style="color:var(--green)">--</div><span class="state-tag" id="fzLabel">WAITING FOR DATA</span></div>
+        <div class="ai-stats three">
+          <div class="stat"><em>POSITION (0 NEAR → 1 FAR)</em><b id="fzDist">--</b></div>
+          <div class="stat"><em>APPROACH SPEED /s</em><b id="fzSpeed">--</b></div>
+          <div class="stat"><em>DOMINANT RULE</em><b id="fzDom" style="font-size:12px">--</b></div>
+        </div>
+        <div class="ai-chart short"><canvas id="fzChart"></canvas></div>
+        <div class="ai-legend"><span><i class="best"></i>Alert level (history)</span></div>
+        <div class="norm-controls">
+          <div class="field"><label for="fzScale">Speed full-scale (norm. units / s)</label><input id="fzScale" type="number" value="0.3" min="0.02" max="3" step="0.05" onchange="onFuzzyScale()"></div>
+        </div>
+        <div class="note">Positive speed means the object is approaching the sensor. Raise the full-scale value if the alert saturates too quickly, lower it if movement is slow.</div>
+      </div>
+
+      <div class="fz-right">
+        <div class="mf-grid">
+          <div class="mf-box">
+            <div class="mf-title">Input 1 · position (normalized)</div>
+            <div class="ai-chart"><canvas id="fzMfD"></canvas></div>
+            <div class="ai-legend"><span><i style="border-top-color:#55dff0"></i>Near</span><span><i style="border-top-color:#a98bff"></i>Medium</span><span><i style="border-top-color:#ffc66d"></i>Far</span></div>
+          </div>
+          <div class="mf-box">
+            <div class="mf-title">Input 2 · approach speed (/s)</div>
+            <div class="ai-chart"><canvas id="fzMfS"></canvas></div>
+            <div class="ai-legend"><span><i style="border-top-color:#55dff0"></i>Receding</span><span><i style="border-top-color:#a98bff"></i>Steady</span><span><i style="border-top-color:#ffc66d"></i>Approaching</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="panel-title" style="margin-bottom:6px">Rule base · firing strength</div>
+          <div class="rules" id="fzRules"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== NEW: COMPUTING CONTINUUM (IoT · Edge · Fog · Cloud · Big data · IoE) ========== -->
+    <section class="panel cc" aria-label="Computing continuum">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Computing continuum · IoT, edge, fog, cloud, big data and IoE</div>
+          <div class="panel-desc">Every paradigm has one duty in the same pipeline as the panels above. IoT and cloud figures are measured on the live stream, the edge filter runs in shadow mode on that stream, and task placement is a simulation with parameters you can change.</div>
+        </div>
+        <div class="chart-legend" id="ccStatus">--</div>
+      </div>
+
+      <div class="cc-flow" aria-label="Data flow">
+        <div class="cc-node" style="--c:#55dff0"><em>IoT · messages</em><b id="ccFlow1">0</b></div><span class="cc-arrow">➜</span>
+        <div class="cc-node" style="--c:#48dfaa"><em>Edge · forwarded</em><b id="ccFlow2">0</b></div><span class="cc-arrow">➜</span>
+        <div class="cc-node" style="--c:#ffc66d"><em>Fog · windows</em><b id="ccFlow3">0</b></div><span class="cc-arrow">➜</span>
+        <div class="cc-node" style="--c:#5798ff"><em>Cloud · archived</em><b id="ccFlow4">0</b></div>
+      </div>
+      <div class="cc-span">
+        <div><b>Big data</b> spans every layer: it measures volume, velocity, variety, veracity and value, and condenses the stream.</div>
+        <div><b>IoE</b> closes the loop: things produce data, a process decides, and people act and acknowledge.</div>
+      </div>
+
+      <div class="cc-cards">
+        <div class="cc-card" style="--c:#55dff0">
+          <div class="cc-top"><span class="cc-badge">IoT</span><span class="cc-where">Things layer · ESP32 + HC-SR04</span></div>
+          <div class="cc-duty"><b>Duty:</b> sense the distance and publish it as JSON over MQTT. It is the only source of data for every other layer.</div>
+          <div class="cc-kv"><span>Sampling interval</span><b id="ccIotDt">--</b></div>
+          <div class="cc-kv"><span>Message rate</span><b id="ccIotRate">--</b></div>
+          <div class="cc-kv"><span>Wi-Fi signal</span><b id="ccIotRssi">--</b></div>
+        </div>
+        <div class="cc-card" style="--c:#48dfaa">
+          <div class="cc-top"><span class="cc-badge">Edge</span><span class="cc-where">On the device · shadow mode</span></div>
+          <div class="cc-duty"><b>Duty:</b> clean and compress at the source with a range check, a Hampel outlier filter (on first differences) and send-on-delta. It also hosts the fuzzy alert and the NN inference.</div>
+          <div class="cc-kv"><span>Received → forwarded</span><b id="ccEdgeFlow">--</b></div>
+          <div class="cc-kv"><span>Traffic reduction</span><b id="ccEdgeRed">--</b></div>
+          <div class="cc-kv"><span>Outliers / invalid</span><b id="ccEdgeOut">--</b></div>
+        </div>
+        <div class="cc-card" style="--c:#ffc66d">
+          <div class="cc-top"><span class="cc-badge">Fog</span><span class="cc-where">Room gateway · this browser</span></div>
+          <div class="cc-duty"><b>Duty:</b> aggregate the stream in time windows, retrain the neural network after every block, and buffer records while the cloud is unreachable.</div>
+          <div class="cc-kv"><span>Windows closed</span><b id="ccFogWin">--</b></div>
+          <div class="cc-kv"><span>Last window (mean ± σ)</span><b id="ccFogLast">--</b></div>
+          <div class="cc-kv"><span>NN train + predict</span><b id="ccFogNN">--</b></div>
+          <div class="cc-kv"><span>Buffered records</span><b id="ccFogBuf">--</b></div>
+        </div>
+        <div class="cc-card" style="--c:#5798ff">
+          <div class="cc-top"><span class="cc-badge">Cloud</span><span class="cc-where">EMQX Cloud + compute</span></div>
+          <div class="cc-duty"><b>Duty:</b> ingest through the MQTT broker, run the heavy genetic-algorithm search, and keep the long-term archive.</div>
+          <div class="cc-kv"><span>Broker</span><b id="ccCloudState">--</b></div>
+          <div class="cc-kv"><span>Arrival jitter (σ)</span><b id="ccCloudJit">--</b></div>
+          <div class="cc-kv"><span>Last GA run</span><b id="ccCloudGA">--</b></div>
+          <div class="cc-kv"><span>Archived records</span><b id="ccCloudArch">--</b></div>
+        </div>
+        <div class="cc-card" style="--c:#a98bff">
+          <div class="cc-top"><span class="cc-badge">Big data</span><span class="cc-where">Streaming analytics</span></div>
+          <div class="cc-duty"><b>Duty:</b> characterise the stream with the five Vs, keep O(1)-memory statistics (Welford) and a histogram, and measure how much the pipeline reduces the data.</div>
+          <div class="cc-kv"><span>Records · volume</span><b id="ccBdVol">--</b></div>
+          <div class="cc-kv"><span>Data quality</span><b id="ccBdQual">--</b></div>
+          <div class="cc-kv"><span>Distance μ ± σ</span><b id="ccBdStat">--</b></div>
+        </div>
+        <div class="cc-card" style="--c:#ff7185">
+          <div class="cc-top"><span class="cc-badge">IoE</span><span class="cc-where">People · process · data · things</span></div>
+          <div class="cc-duty"><b>Duty:</b> turn the fuzzy alert into a managed workflow: escalate, trigger a simulated actuator, and require a person to acknowledge.</div>
+          <div class="cc-kv"><span>Loop health</span><b id="ccIoeLoop">--</b></div>
+          <div class="cc-kv"><span>Open alerts</span><b id="ccIoeOpen">--</b></div>
+          <div class="cc-kv"><span>Mean time to acknowledge</span><b id="ccIoeAck">--</b></div>
+        </div>
+      </div>
+
+      <div class="norm-controls">
+        <div class="field"><label for="ccDeadband">Edge deadband δ (cm)</label><input id="ccDeadband" type="number" value="1" min="0" step="0.5" onchange="onCcParams()"></div>
+        <div class="field"><label for="ccHeartbeat">Edge heartbeat (s)</label><input id="ccHeartbeat" type="number" value="10" min="1" step="1" onchange="onCcParams()"></div>
+        <div class="field"><label for="ccWindow">Fog window (s)</label><input id="ccWindow" type="number" value="10" min="2" step="1" onchange="onCcParams()"></div>
+      </div>
+
+      <div class="cc-two">
+        <div class="cc-block">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">Task placement · offloading simulation</div>
+              <div class="panel-desc">Each task of the panels above is placed on the edge, fog or cloud. Cost = α · (latency / deadline) + (1 − α) · (device energy / worst case). Hard limits: memory, deadline, pinned tasks, storage, and safety (the alert must not depend on the WAN).</div>
+            </div>
+          </div>
+          <div class="cc-table-wrap"><table class="cc-table" id="ccPlace"></table></div>
+          <div class="norm-controls">
+            <div class="field"><label for="ccRttFog">Fog round trip (ms)</label><input id="ccRttFog" type="number" value="5" min="0" step="1" onchange="onCcParams()"></div>
+            <div class="field"><label for="ccRttCloud">Cloud round trip (ms)</label><input id="ccRttCloud" type="number" value="120" min="0" step="10" onchange="onCcParams()"></div>
+            <div class="field"><label for="ccAlpha">Latency weight α (0–1)</label><input id="ccAlpha" type="number" value="0.7" min="0" max="1" step="0.05" onchange="onCcParams()"></div>
+            <label class="check"><input type="checkbox" id="ccOutage" onchange="onCcParams()"> Simulate cloud outage</label>
+          </div>
+          <div class="note">Assumed tier speeds: edge 0.05 GFLOPS (ESP32, 150 KB usable memory), fog 5 GFLOPS (20 Mbps link), cloud 50 GFLOPS (5 Mbps uplink). Device energy: 3 mJ per MFLOP computed, 1.5 mJ per KB sent. Change them in the TIERS constants. The outage is simulated only; the real MQTT link is not touched.</div>
+        </div>
+
+        <div class="cc-block">
+          <div>
+            <div class="panel-title">Data reduction and the five Vs</div>
+            <div class="panel-desc">Projected volume per day at the current rate (log scale).</div>
+          </div>
+          <div class="funnel-row" style="--c:#55dff0"><span>Raw stream (IoT)</span><div class="funnel-bar"><i id="ccFB0"></i></div><b id="ccFV0">--</b></div>
+          <div class="funnel-row" style="--c:#48dfaa"><span>After edge filter</span><div class="funnel-bar"><i id="ccFB1"></i></div><b id="ccFV1">--</b></div>
+          <div class="funnel-row" style="--c:#ffc66d"><span>After fog windows</span><div class="funnel-bar"><i id="ccFB2"></i></div><b id="ccFV2">--</b></div>
+          <div class="note" id="ccFunnelNote">Waiting for data.</div>
+          <div class="ai-stats five">
+            <div class="stat"><em>VOLUME</em><b id="ccV1">--</b></div>
+            <div class="stat"><em>VELOCITY</em><b id="ccV2">--</b></div>
+            <div class="stat"><em>VARIETY</em><b id="ccV3">--</b></div>
+            <div class="stat"><em>VERACITY</em><b id="ccV4">--</b></div>
+            <div class="stat"><em>VALUE</em><b id="ccV5">--</b></div>
+          </div>
+          <div class="mf-title" style="margin:0">Distribution of the object's position (10 bins, 0 near → 1 far)</div>
+          <div class="ai-chart short"><canvas id="ccHist"></canvas></div>
+        </div>
+      </div>
+
+      <div class="cc-block">
+        <div class="panel-head">
+          <div>
+            <div class="panel-title">IoE loop · people, process, data and things</div>
+            <div class="panel-desc">The alert level from the fuzzy panel must stay in the same state for 3 samples before an event is raised, which prevents flapping. Warning and Critical need a person to acknowledge. The actuator command is simulated and nothing is published.</div>
+          </div>
+          <button class="primary" onclick="ccAckAll()">Acknowledge open alerts</button>
+        </div>
+        <div class="ai-stats">
+          <div class="stat"><em>THINGS</em><b id="ccPThings">--</b><small id="ccPThingsSub">--</small></div>
+          <div class="stat"><em>DATA</em><b id="ccPData">--</b><small id="ccPDataSub">--</small></div>
+          <div class="stat"><em>PROCESS</em><b id="ccPProcess">--</b><small id="ccPProcessSub">--</small></div>
+          <div class="stat"><em>PEOPLE</em><b id="ccPPeople">--</b><small id="ccPPeopleSub">--</small></div>
+        </div>
+        <div class="ioe-events" id="ccEvents"><div class="empty">No alert events yet. Events appear when the fuzzy alert level changes.</div></div>
+      </div>
+    </section>
+
+    <section class="content-grid">
+      <div class="panel chart-panel">
+        <div class="panel-head">
+          <div><div class="panel-title">Distance history</div><div class="panel-desc">Live telemetry · latest 60 measurements</div></div>
+          <div class="chart-legend">CM / REAL TIME</div>
+        </div>
+        <div class="chart-wrap"><canvas id="distanceChart"></canvas></div>
+      </div>
+      <div class="panel connection-panel">
+        <div class="panel-title">System diagnostics</div>
+        <div class="panel-desc">Cloud and device telemetry</div>
+        <div class="connection-row"><span class="connection-label">MQTT broker</span><span class="connection-value" id="brokerState">Disconnected</span></div>
+        <div class="connection-row"><span class="connection-label">Topic</span><span class="connection-value">distance/device/data</span></div>
+        <div class="connection-row"><span class="connection-label">Device ID</span><span class="connection-value" id="deviceId">Waiting</span></div>
+        <div class="connection-row"><span class="connection-label">Messages received</span><span class="connection-value" id="messageCount">0</span></div>
+        <div class="connection-row"><span class="connection-label">Last packet</span><span class="connection-value" id="packetTime">--</span></div>
+        <div class="actions">
+          <button class="primary" id="downloadBtn" onclick="downloadCSV()" disabled>↓ Download session CSV</button>
+          <button onclick="clearHistory()">Clear chart</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel feed">
+      <div class="feed-head"><div><div class="panel-title">Live event stream</div><div class="panel-desc">Most recent incoming MQTT packets</div></div><div class="chart-legend" id="feedCount">0 EVENTS</div></div>
+      <div class="feed-list" id="feedList"><div class="empty">Connect to the broker to start receiving telemetry.</div></div>
+    </section>
+
+    <!-- ========== NEW: RESULTS AS JSON ========== -->
+    <section class="panel json-panel" aria-label="All results as JSON">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">Results · JSON</div>
+          <div class="panel-desc">One live snapshot of every module: measurement, normalization, neural-network forecast, genetic algorithm, fuzzy alert and the computing continuum. Refreshes every second.</div>
+        </div>
+        <div class="chart-legend" id="jsonMeta">--</div>
+      </div>
+      <pre class="json" id="jsonOut" tabindex="0" aria-label="JSON results">{}</pre>
+      <div class="norm-controls">
+        <button class="primary" onclick="copyJson()">Copy JSON</button>
+        <button onclick="downloadJson()">↓ Download JSON</button>
+        <button id="jsonPauseBtn" onclick="toggleJsonPause()">Pause updates</button>
+        <label class="check"><input type="checkbox" id="jsonHist" onchange="refreshJson(true)"> Include last 100 measurements</label>
+      </div>
+    </section>
+
+    <footer><span>DISTANCE TWIN · ESP32 TELEMETRY INTERFACE</span><span>Cloud transport: MQTT over secure WebSocket (WSS)</span><span id="footerClock">--</span></footer>
+  </main>
+  <div class="toast" id="toast"></div>
+
+<script>
+  // EMQX Cloud WebSocket endpoint. Keep this aligned with your EMQX deployment.
+  const MQTT_URL = "wss://v916f16f.ala.asia-southeast1.emqxsl.com:8084/mqtt";
+  const MQTT_TOPIC = "distance/device/data";
+
+  let client = null;
+  let history = [];
+  let messageTotal = 0;
+  let lastDeviceId = "Waiting";
+  let latestPacket = null;
+
+  /* ---------- Normalization configuration ----------
+       n_raw  = clamp((d - dmin) / (dmax - dmin), 0, 1)
+       n_ema  = a * n_raw + (1 - a) * n_ema_prev     (a = 1 means no smoothing)
+       output = mode === "proximity" ? 1 - n_ema : n_ema */
+  const norm = { dmin: 2, dmax: 400, mode: "distance", alpha: 1 };
+
+  const $ = id => document.getElementById(id);
+  const fmt = n => Number(n).toFixed(1);
+  const clamp01 = x => Math.min(1, Math.max(0, x));
+  const num = (id, def) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : def; };
+  const tick = () => new Promise(r => setTimeout(r, 0));
+
+  function notify(message) {
+    const t = $("toast");
+    t.textContent = message;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2800);
+  }
+
+  /* ---------- Normalization functions ---------- */
+  function normalizeRaw(d) {
+    const span = norm.dmax - norm.dmin;
+    if (!(span > 0)) return 0;
+    return clamp01((d - norm.dmin) / span);
+  }
+  function applyOutputMode(n) { return norm.mode === "proximity" ? 1 - n : n; }
+  function computeNorm(point, prev) {
+    point.outOfRange = point.distance < norm.dmin ? "below" : point.distance > norm.dmax ? "above" : null;
+    point.nRaw = normalizeRaw(point.distance);
+    const a = Math.min(1, Math.max(0.05, norm.alpha));
+    point.nSmooth = prev && Number.isFinite(prev.nSmooth) ? a * point.nRaw + (1 - a) * prev.nSmooth : point.nRaw;
+    point.norm = applyOutputMode(point.nSmooth);
+  }
+  function recomputeAllNorm() {
+    let prev = null;
+    history.forEach(p => { computeNorm(p, prev); prev = p; });
+  }
+  function updateFormulaText() {
+    const a = norm.alpha < 1 ? " · EMA α=" + norm.alpha : "";
+    const base = "n = clamp((d − " + norm.dmin + ") / (" + norm.dmax + " − " + norm.dmin + "), 0, 1)";
+    $("formulaText").textContent = (norm.mode === "proximity" ? "p = 1 − " + base : base) + a;
+  }
+  function applyNormConfig() {
+    const dmin = parseFloat($("cfgMin").value);
+    const dmax = parseFloat($("cfgMax").value);
+    const alpha = parseFloat($("cfgAlpha").value);
+    if (!Number.isFinite(dmin) || !Number.isFinite(dmax) || dmin < 0 || dmax <= dmin) {
+      notify("Far limit must be larger than the near limit.");
+      return;
+    }
+    norm.dmin = dmin;
+    norm.dmax = dmax;
+    norm.mode = $("cfgMode").value;
+    norm.alpha = Number.isFinite(alpha) ? Math.min(1, Math.max(0.05, alpha)) : 1;
+    $("cfgAlpha").value = norm.alpha;
+    updateFormulaText();
+    recomputeAllNorm();
+    if (history.length) renderNorm(history[history.length - 1]);
+    drawNormChart();
+    resetForecast();   // the forecast scale changed, so the window is rebuilt
+    fuzzyReset();
+    notify("Normalization updated.");
+  }
+  function renderNorm(point) {
+    $("normValue").textContent = point.norm.toFixed(3);
+    const pos = point.nSmooth;
+    $("twinObj").style.left = "calc(30px + (100% - 30px) * " + pos + ")";
+    $("twinFill").style.width = "calc(30px + (100% - 30px) * " + pos + ")";
+    const flag = $("normFlag");
+    if (point.outOfRange === "below") { flag.textContent = "BELOW NEAR LIMIT · CLAMPED"; flag.style.color = "var(--red)"; }
+    else if (point.outOfRange === "above") { flag.textContent = "BEYOND FAR LIMIT · CLAMPED"; flag.style.color = "var(--amber)"; }
+    else { flag.textContent = "WITHIN CALIBRATED RANGE"; flag.style.color = "var(--green)"; }
+  }
+
+  /* =====================================================================
+     NEURAL NETWORK CORE  (pure JavaScript MLP: L inputs -> tanh hidden -> H outputs)
+     Direct multi-step forecasting. Inputs and targets are expressed relative to the
+     last observed value (delta form) and scaled by SCALE, which makes the network
+     learn the change of the signal rather than its absolute level.
+     ===================================================================== */
+  const SCALE = 4;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeSamples(series, L, h) {
+    const X = [], Y = [];
+    for (let i = L; i + h <= series.length; i++) {
+      const base = series[i - 1];
+      const x = new Float64Array(L);
+      for (let k = 0; k < L; k++) x[k] = (series[i - L + k] - base) * SCALE;
+      const y = new Float64Array(h);
+      for (let k = 0; k < h; k++) y[k] = (series[i + k] - base) * SCALE;
+      X.push(x); Y.push(y);
+    }
+    return { X, Y };
+  }
+
+  function initMLP(nIn, nHid, nOut, rng) {
+    const m = { nIn, nHid, nOut,
+      W1: new Float64Array(nHid * nIn), b1: new Float64Array(nHid),
+      W2: new Float64Array(nOut * nHid), b2: new Float64Array(nOut) };
+    const s1 = Math.sqrt(1 / nIn), s2 = Math.sqrt(1 / nHid);
+    for (let i = 0; i < m.W1.length; i++) m.W1[i] = (rng() * 2 - 1) * s1;
+    for (let i = 0; i < m.W2.length; i++) m.W2[i] = (rng() * 2 - 1) * s2 * 0.5;
+    return m;
+  }
+
+  function forwardInto(m, x, hid, out) {
+    const { nIn, nHid, nOut, W1, b1, W2, b2 } = m;
+    for (let j = 0; j < nHid; j++) {
+      let s = b1[j]; const row = j * nIn;
+      for (let i = 0; i < nIn; i++) s += W1[row + i] * x[i];
+      hid[j] = Math.tanh(s);
+    }
+    for (let o = 0; o < nOut; o++) {
+      let s = b2[o]; const row = o * nHid;
+      for (let j = 0; j < nHid; j++) s += W2[row + j] * hid[j];
+      out[o] = s;
+    }
+  }
+
+  function trainMLP(m, X, Y, epochs, lr) {
+    const N = X.length, { nIn, nHid, nOut } = m;
+    const params = [m.W1, m.b1, m.W2, m.b2];
+    const grads = params.map(p => new Float64Array(p.length));
+    const M = params.map(p => new Float64Array(p.length));
+    const V = params.map(p => new Float64Array(p.length));
+    const hid = new Float64Array(nHid), out = new Float64Array(nOut), dh = new Float64Array(nHid);
+    const B1 = 0.9, B2 = 0.999, EPS = 1e-8;
+    for (let ep = 1; ep <= epochs; ep++) {
+      for (let k = 0; k < 4; k++) grads[k].fill(0);
+      for (let n = 0; n < N; n++) {
+        const x = X[n], y = Y[n];
+        forwardInto(m, x, hid, out);
+        dh.fill(0);
+        for (let o = 0; o < nOut; o++) {
+          const d = 2 * (out[o] - y[o]) / (N * nOut);
+          grads[3][o] += d;
+          const row = o * nHid;
+          for (let j = 0; j < nHid; j++) { grads[2][row + j] += d * hid[j]; dh[j] += d * m.W2[row + j]; }
+        }
+        for (let j = 0; j < nHid; j++) {
+          const dz = dh[j] * (1 - hid[j] * hid[j]);
+          grads[1][j] += dz;
+          const row = j * nIn;
+          for (let i = 0; i < nIn; i++) grads[0][row + i] += dz * x[i];
+        }
+      }
+      const c1 = 1 - Math.pow(B1, ep), c2 = 1 - Math.pow(B2, ep);
+      for (let k = 0; k < 4; k++) {
+        const p = params[k], g = grads[k], mm = M[k], vv = V[k];
+        for (let i = 0; i < p.length; i++) {
+          mm[i] = B1 * mm[i] + (1 - B1) * g[i];
+          vv[i] = B2 * vv[i] + (1 - B2) * g[i] * g[i];
+          p[i] -= lr * (mm[i] / c1) / (Math.sqrt(vv[i] / c2) + EPS);
+        }
+      }
+    }
+  }
+
+  function predictMLP(m, x) {
+    const hid = new Float64Array(m.nHid), out = new Float64Array(m.nOut);
+    forwardInto(m, x, hid, out);
+    return out;
+  }
+
+  /* =====================================================================
+     ROLLING FORECASTER
+     1. Take the latest W points as the training window and predict the next H.
+     2. Collect real measurements as they arrive and compare them with the forecast.
+     3. When H real points have arrived, drop the OLDEST H points of the window,
+        append the H new real points, retrain and predict the next H.
+     ===================================================================== */
+  const fc = {
+    running: false, h: 10, wlen: 200, L: 20, hid: 8, lr: 0.01, epochs: 200,
+    window: [], actual: [], pending: [], pred: null, base: 0, ready: false,
+    blocks: 0, n: 0, se: 0, ae: 0, seNaive: 0, epoch: 0
+  };
+
+  function readForecastParams() {
+    fc.h = parseInt($("fcHorizon").value, 10);
+    fc.wlen = Math.round(num("fcWindow", 200));
+    fc.L = Math.max(3, Math.round(num("fcLook", 20)));
+    fc.hid = Math.max(2, Math.round(num("fcHidden", 8)));
+    fc.lr = Math.min(0.1, Math.max(0.0005, num("fcLr", 0.01)));
+  }
+
+  function toggleForecast() {
+    if (fc.running) {
+      fc.running = false;
+      fc.epoch++;
+      $("fcBtn").textContent = "Start forecast";
+      updateFcUI();
+      return;
+    }
+    readForecastParams();
+    if (fc.wlen < fc.h + fc.L + 20) {
+      notify("Training window must be at least H + L + 20 steps.");
+      return;
+    }
+    fc.running = true;
+    $("fcBtn").textContent = "Stop forecast";
+    resetForecast();
+  }
+
+  function onHorizonChange() {
+    readForecastParams();
+    if (fc.running) resetForecast();
+  }
+
+  function resetForecast() {
+    fc.epoch++;
+    fc.window = []; fc.actual = []; fc.pending = []; fc.pred = null; fc.ready = false;
+    fc.blocks = 0; fc.n = 0; fc.se = 0; fc.ae = 0; fc.seNaive = 0;
+    if (fc.running) {
+      readForecastParams();
+      forecastBootstrap();
+    }
+    updateFcUI();
+    drawForecastChart();
+  }
+
+  function forecastBootstrap() {
+    if (history.length >= fc.wlen) {
+      fc.window = history.slice(-fc.wlen).map(p => p.norm);
+      scheduleTrain();
+    }
+  }
+
+  function forecastOnPoint(v) {
+    if (!fc.running) return;
+    if (fc.window.length === 0) {
+      forecastBootstrap();
+      updateFcUI();
+      return;
+    }
+    if (!fc.ready) { fc.pending.push(v); return; }
+    fc.actual.push(v);
+    if (fc.actual.length >= fc.h) completeBlock();
+    else { updateFcUI(); drawForecastChart(); }
+  }
+
+  function scheduleTrain() {
+    fc.ready = false;
+    const myEpoch = fc.epoch;
+    updateFcUI();
+    setTimeout(() => {
+      if (myEpoch !== fc.epoch || !fc.running) return;
+      try {
+        readForecastParams();
+        const tt0 = performance.now();
+        trainAndPredict();
+        cc.fog.nnMs = performance.now() - tt0;
+      } catch (e) {
+        console.error("Forecast error:", e);
+        notify("Forecast failed: " + e.message);
+        fc.running = false;
+        $("fcBtn").textContent = "Start forecast";
+        updateFcUI();
+        return;
+      }
+      fc.ready = true;
+      fc.actual = fc.pending;
+      fc.pending = [];
+      if (fc.actual.length >= fc.h) completeBlock();
+      else { updateFcUI(); drawForecastChart(); }
+    }, 20);
+  }
+
+  function trainAndPredict() {
+    const L = fc.L, h = fc.h, series = fc.window;
+    const { X, Y } = makeSamples(series, L, h);
+    if (X.length < 10) throw new Error("not enough samples; enlarge the training window");
+    const model = initMLP(L, fc.hid, h, mulberry32(12345));
+    trainMLP(model, X, Y, fc.epochs, fc.lr);
+    const base = series[series.length - 1];
+    const x = new Float64Array(L);
+    for (let k = 0; k < L; k++) x[k] = (series[series.length - L + k] - base) * SCALE;
+    const out = predictMLP(model, x);
+    fc.pred = Array.from(out, o => clamp01(base + o / SCALE));
+    fc.base = base;
+  }
+
+  function completeBlock() {
+    const h = fc.h;
+    const act = fc.actual.slice(0, h);
+    for (let k = 0; k < h; k++) {
+      const e = act[k] - fc.pred[k];
+      const en = act[k] - fc.base;
+      fc.se += e * e; fc.ae += Math.abs(e); fc.seNaive += en * en;
+    }
+    fc.n += h; fc.blocks++;
+    // Slide the training window: remove the oldest H points, add the H new real points
+    fc.window = fc.window.slice(h).concat(act);
+    fc.pending = fc.actual.slice(h);
+    fc.actual = [];
+    scheduleTrain();
+  }
+
+  function updateFcUI() {
+    let s = "IDLE";
+    if (fc.running) {
+      if (fc.window.length === 0) s = "COLLECTING " + history.length + "/" + fc.wlen;
+      else if (!fc.ready) s = "TRAINING…";
+      else s = "FORECASTING";
+    }
+    $("fcStatus").textContent = s;
+    $("fcProg").textContent = fc.running && fc.ready ? fc.actual.length + " / " + fc.h : "--";
+    if (fc.n > 0) {
+      const rmse = Math.sqrt(fc.se / fc.n), mae = fc.ae / fc.n, rn = Math.sqrt(fc.seNaive / fc.n);
+      $("fcRmse").textContent = rmse.toFixed(4);
+      $("fcMae").textContent = mae.toFixed(4);
+      $("fcSkill").textContent = rn > 0 ? ((1 - rmse / rn) * 100).toFixed(1) + "%" : "--";
+    } else {
+      $("fcRmse").textContent = "--"; $("fcMae").textContent = "--"; $("fcSkill").textContent = "--";
+    }
+  }
+
+  function setupCanvas(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    return { ctx, w: rect.width, h: rect.height };
+  }
+
+  function drawForecastChart() {
+    const { ctx, w, h } = setupCanvas($("fcChart"));
+    const pad = { l: 42, r: 12, t: 10, b: 22 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    if (!fc.pred) {
+      ctx.fillStyle = "#8da5bd"; ctx.textAlign = "center";
+      ctx.fillText(fc.running ? "Collecting the training window…" : "Press “Start forecast” (or the demo signal) to begin", w / 2, h / 2);
+      return;
+    }
+    const ctxN = Math.min(60, fc.window.length), H = fc.pred.length;
+    const hist = fc.window.slice(-ctxN), act = fc.actual, pred = fc.pred;
+    const total = ctxN + H;
+    let mn = Infinity, mx = -Infinity;
+    [hist, act, pred].forEach(a => a.forEach(v => { mn = Math.min(mn, v); mx = Math.max(mx, v); }));
+    const span = Math.max(0.1, mx - mn);
+    mn -= span * 0.15; mx += span * 0.15;
+    const xAt = i => pad.l + (i / (total - 1)) * cw;
+    const yAt = v => pad.t + ((mx - v) / (mx - mn)) * ch;
+
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (ch / 4) * i;
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right";
+      ctx.fillText((mx - (mx - mn) * i / 4).toFixed(2), pad.l - 7, y + 3);
+    }
+    // forecast region
+    const x0 = xAt(ctxN - 1);
+    ctx.fillStyle = "rgba(255,198,109,.06)";
+    ctx.fillRect(x0, pad.t, w - pad.r - x0, ch);
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = "#4a627a";
+    ctx.beginPath(); ctx.moveTo(x0, pad.t); ctx.lineTo(x0, h - pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#7891aa"; ctx.textAlign = "left";
+    ctx.fillText("FORECAST ORIGIN", Math.min(x0 + 6, w - 110), h - 5);
+
+    // measured line (context + real values that arrived after the origin)
+    ctx.beginPath();
+    hist.forEach((v, i) => i ? ctx.lineTo(xAt(i), yAt(v)) : ctx.moveTo(xAt(i), yAt(v)));
+    act.forEach((v, k) => ctx.lineTo(xAt(ctxN + k), yAt(v)));
+    ctx.strokeStyle = "#a98bff"; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.stroke();
+
+    // forecast line
+    ctx.beginPath();
+    ctx.moveTo(xAt(ctxN - 1), yAt(hist[hist.length - 1]));
+    pred.forEach((v, k) => ctx.lineTo(xAt(ctxN + k), yAt(v)));
+    ctx.setLineDash([6, 4]); ctx.strokeStyle = "#ffc66d"; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign = "left"; ctx.fillStyle = "#7891aa"; ctx.fillText("PAST", pad.l, h - 5);
+    ctx.textAlign = "right"; ctx.fillText("+" + H + " STEPS", w - pad.r, h - 5);
+  }
+
+  /* =====================================================================
+     GENETIC ALGORITHM  (optimum look-back time, hidden neurons, learning rate)
+     Chromosome = [L, hidden, ln(lr)] (real coded), fitness = validation RMSE.
+     ===================================================================== */
+  const GA_EPOCHS = 60;
+  const ga = { running: false, best: [], mean: [], result: null, cfg: null };
+
+  function decodeGenes(g) {
+    return { L: Math.round(g[0]), hid: Math.round(g[1]), lr: Math.exp(g[2]) };
+  }
+
+  function evalFitness(series, h, p) {
+    const { X, Y } = makeSamples(series, p.L, h);
+    const N = X.length;
+    if (N < 24) return { rmse: 1e9, naive: 1e9 };
+    const nTr = Math.floor(N * 0.75);
+    const model = initMLP(p.L, p.hid, h, mulberry32(7));
+    trainMLP(model, X.slice(0, nTr), Y.slice(0, nTr), GA_EPOCHS, p.lr);
+    const hid = new Float64Array(p.hid), out = new Float64Array(h);
+    let se = 0, sn = 0, c = 0;
+    for (let i = nTr; i < N; i++) {
+      forwardInto(model, X[i], hid, out);
+      for (let o = 0; o < h; o++) {
+        const e = (out[o] - Y[i][o]) / SCALE;
+        const en = Y[i][o] / SCALE;
+        se += e * e; sn += en * en; c++;
+      }
+    }
+    return { rmse: Math.sqrt(se / c), naive: Math.sqrt(sn / c) };
+  }
+
+  function medianDtSeconds() {
+    const t = history.slice(-200).map(p => p.time.getTime());
+    if (t.length < 3) return null;
+    const d = [];
+    for (let i = 1; i < t.length; i++) d.push(t[i] - t[i - 1]);
+    d.sort((a, b) => a - b);
+    return d[Math.floor(d.length / 2)] / 1000;
+  }
+
+  function randn() {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  async function runGA() {
+    if (ga.running) return;
+    readForecastParams();
+    const h = fc.h, wlen = fc.wlen;
+    if (history.length < wlen) {
+      notify("Need " + wlen + " measurements first (have " + history.length + ").");
+      return;
+    }
+    const Lmax = Math.min(40, wlen - h - 25);
+    if (Lmax < 6) { notify("Training window is too small for this horizon."); return; }
+    const popN = Math.round(Math.min(40, Math.max(6, num("gaPop", 12))));
+    const gens = Math.round(Math.min(30, Math.max(3, num("gaGen", 8))));
+    const lo = [5, 4, Math.log(0.002)], hi = [Lmax, 16, Math.log(0.05)];
+    const series = history.slice(-wlen).map(p => p.norm);
+    const dt = medianDtSeconds();
+
+    ga.running = true; ga.best = []; ga.mean = []; ga.result = null; ga.t0 = performance.now();
+    ga.cfg = { population: popN, generations: gens, horizon_steps: h, training_window_steps: wlen, epochs_per_evaluation: GA_EPOCHS };
+    $("gaBtn").disabled = true;
+    $("gaStatus").textContent = "RUNNING";
+    $("gaBar").style.width = "0%";
+
+    const clampGene = (v, k) => Math.min(hi[k], Math.max(lo[k], v));
+    const make = g => ({ g, p: decodeGenes(g), fit: null, naive: null });
+    const randomInd = () => make([0, 1, 2].map(k => lo[k] + Math.random() * (hi[k] - lo[k])));
+    const tournament = pop => {
+      let best = null;
+      for (let i = 0; i < 3; i++) {
+        const c = pop[Math.floor(Math.random() * pop.length)];
+        if (!best || c.fit < best.fit) best = c;
+      }
+      return best;
+    };
+
+    let pop = Array.from({ length: popN }, randomInd);
+    try {
+      for (let gen = 0; gen < gens; gen++) {
+        for (let idx = 0; idx < pop.length; idx++) {
+          const ind = pop[idx];
+          if (ind.fit === null) {
+            const r = evalFitness(series, h, ind.p);
+            ind.fit = r.rmse; ind.naive = r.naive;
+            $("gaBar").style.width = (((gen + (idx + 1) / pop.length) / gens) * 100).toFixed(1) + "%";
+            $("gaStatus").textContent = "GEN " + (gen + 1) + "/" + gens;
+            await tick();
+          }
+        }
+        pop.sort((a, b) => a.fit - b.fit);
+        const finite = pop.filter(i => i.fit < 1e8);
+        ga.best.push(pop[0].fit);
+        ga.mean.push(finite.length ? finite.reduce((s, i) => s + i.fit, 0) / finite.length : pop[0].fit);
+        drawGAChart();
+        if (gen === gens - 1) break;
+
+        const next = [pop[0], pop[1]];                      // elitism
+        while (next.length < popN) {
+          const a = tournament(pop), b = tournament(pop);
+          const child = [0, 1, 2].map(k => {
+            const w = Math.random();                         // blend crossover
+            let v = Math.random() < 0.85 ? w * a.g[k] + (1 - w) * b.g[k] : a.g[k];
+            if (Math.random() < 0.3) v += randn() * 0.15 * (hi[k] - lo[k]);   // Gaussian mutation
+            return clampGene(v, k);
+          });
+          next.push(make(child));
+        }
+        pop = next;
+      }
+      const best = pop[0];
+      showGAResult(best, h, dt);
+      // Hand the optimum over to the forecaster
+      $("fcLook").value = best.p.L;
+      $("fcHidden").value = best.p.hid;
+      $("fcLr").value = best.p.lr.toFixed(4);
+      notify("GA finished. Best parameters were applied to the forecaster.");
+    } catch (e) {
+      console.error("GA error:", e);
+      notify("GA failed: " + e.message);
+    }
+    cc.cloud.gaMs = performance.now() - ga.t0;
+    ga.running = false;
+    $("gaBtn").disabled = false;
+    $("gaBar").style.width = "100%";
+    $("gaStatus").textContent = "DONE";
+    refreshJson(true);
+  }
+
+  function showGAResult(best, h, dt) {
+    const L = best.p.L;
+    ga.result = {
+      look_back_steps: L,
+      optimum_time_s: dt ? +(L * dt).toFixed(3) : null,
+      sampling_interval_s: dt ? +dt.toFixed(3) : null,
+      hidden_neurons: best.p.hid,
+      learning_rate: +best.p.lr.toFixed(5),
+      horizon_steps: h,
+      validation_rmse: +best.fit.toFixed(5),
+      naive_rmse: +best.naive.toFixed(5),
+      improvement_percent: best.naive > 0 ? +((1 - best.fit / best.naive) * 100).toFixed(2) : null
+    };
+    $("gaTime").textContent = dt ? (L * dt).toFixed(dt * L < 10 ? 2 : 1) + " s" : L + " steps";
+    $("gaSteps").textContent = "Optimum look-back window: " + L + " steps" + (dt ? " at about " + dt.toFixed(2) + " s per step" : "") + " for a horizon of " + h + " steps";
+    $("gaL").textContent = L;
+    $("gaH").textContent = best.p.hid;
+    $("gaLr").textContent = best.p.lr.toFixed(4);
+    $("gaRmse").textContent = best.fit.toFixed(4);
+    $("gaNaive").textContent = best.naive.toFixed(4);
+    $("gaGain").textContent = best.naive > 0 ? ((1 - best.fit / best.naive) * 100).toFixed(1) + "%" : "--";
+  }
+
+  function drawGAChart() {
+    const { ctx, w, h } = setupCanvas($("gaChart"));
+    const pad = { l: 42, r: 10, t: 8, b: 20 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    if (!ga.best.length) {
+      ctx.fillStyle = "#8da5bd"; ctx.textAlign = "center";
+      ctx.fillText("Convergence appears here", w / 2, h / 2);
+      return;
+    }
+    const all = ga.best.concat(ga.mean);
+    let mn = Math.min(...all), mx = Math.max(...all);
+    const span = Math.max(1e-6, mx - mn);
+    mn -= span * 0.1; mx += span * 0.1;
+    const n = ga.best.length;
+    const xAt = i => pad.l + (n === 1 ? cw / 2 : (i / (n - 1)) * cw);
+    const yAt = v => pad.t + ((mx - v) / (mx - mn)) * ch;
+    for (let i = 0; i <= 3; i++) {
+      const y = pad.t + (ch / 3) * i;
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right";
+      ctx.fillText((mx - (mx - mn) * i / 3).toFixed(4), pad.l - 6, y + 3);
+    }
+    const line = (arr, color, dash) => {
+      ctx.beginPath();
+      arr.forEach((v, i) => i ? ctx.lineTo(xAt(i), yAt(v)) : ctx.moveTo(xAt(i), yAt(v)));
+      ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      arr.forEach((v, i) => { ctx.beginPath(); ctx.arc(xAt(i), yAt(v), 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); });
+    };
+    line(ga.mean, "#8da5bd", [5, 4]);
+    line(ga.best, "#48dfaa", []);
+    ctx.fillStyle = "#7891aa"; ctx.textAlign = "left"; ctx.fillText("GEN 1", pad.l, h - 5);
+    ctx.textAlign = "right"; ctx.fillText("GEN " + n, w - pad.r, h - 5);
+  }
+
+  /* =====================================================================
+     FUZZY INFERENCE SYSTEM (Mamdani)
+     Responsibility: proximity alert level 0-100 from
+       input 1 = physical position (0 near ... 1 far, independent of the output mode)
+       input 2 = approach speed (normalized units per second, positive = approaching)
+     Operators: AND = min, implication = min, aggregation = max, defuzzification = centroid.
+     ===================================================================== */
+  const FZ_D = ["Near", "Medium", "Far"];
+  const FZ_S = ["Receding", "Steady", "Approaching"];
+  const FZ_O = ["Safe", "Caution", "Warning", "Critical"];
+  const FZ_COLORS = ["#55dff0", "#a98bff", "#ffc66d"];
+
+  function trapmf(x, a, b, c, d) {
+    if (x < a || x > d) return 0;
+    if (x >= b && x <= c) return 1;
+    if (x < b) return (x - a) / (b - a);
+    return (d - x) / (d - c);
+  }
+  const fzDist  = [x => trapmf(x, 0, 0, 0.15, 0.35), x => trapmf(x, 0.2, 0.45, 0.45, 0.7), x => trapmf(x, 0.55, 0.8, 1, 1)];
+  const fzSpeed = [u => trapmf(u, -1, -1, -0.5, -0.1), u => trapmf(u, -0.4, 0, 0, 0.4), u => trapmf(u, 0.1, 0.5, 1, 1)];
+  const fzOut   = [y => trapmf(y, 0, 0, 15, 35), y => trapmf(y, 20, 40, 40, 60), y => trapmf(y, 45, 65, 65, 85), y => trapmf(y, 70, 88, 100, 100)];
+  // [distance term, speed term, output term]
+  const FZ_RULES = [
+    [0, 0, 1], [0, 1, 2], [0, 2, 3],
+    [1, 0, 0], [1, 1, 1], [1, 2, 2],
+    [2, 0, 0], [2, 1, 0], [2, 2, 1]
+  ];
+  const fz = { scale: 0.3, speed: 0, hist: [], last: null };
+
+  function fuzzyLabel(level) {
+    if (level < 25) return { text: "SAFE", color: "#48dfaa", bg: "#163b3b", border: "#285b56" };
+    if (level < 50) return { text: "CAUTION", color: "#ffc66d", bg: "#49371f", border: "#6a5230" };
+    if (level < 75) return { text: "WARNING", color: "#ff9f5a", bg: "#4a2f1d", border: "#6e4528" };
+    return { text: "CRITICAL", color: "#ff7185", bg: "#4b2331", border: "#70333f" };
+  }
+
+  function approachSpeed() {
+    const pts = history.slice(-5);
+    if (pts.length < 2) return 0;
+    const t0 = pts[0].time.getTime() / 1000;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    const n = pts.length;
+    pts.forEach(p => { const x = p.time.getTime() / 1000 - t0, y = p.nSmooth; sx += x; sy += y; sxx += x * x; sxy += x * y; });
+    const den = n * sxx - sx * sx;
+    if (Math.abs(den) < 1e-9) return 0;
+    return -((n * sxy - sx * sy) / den);   // least-squares slope, sign flipped: positive = approaching
+  }
+
+  function fuzzyInfer(dist, speed, scale) {
+    const u = Math.max(-1, Math.min(1, speed / scale));
+    const md = fzDist.map(f => f(dist)), ms = fzSpeed.map(f => f(u));
+    const strengths = FZ_RULES.map(([d, s]) => Math.min(md[d], ms[s]));
+    let num = 0, den = 0;
+    for (let y = 0; y <= 100; y++) {
+      let agg = 0;
+      for (let i = 0; i < FZ_RULES.length; i++) {
+        const v = Math.min(strengths[i], fzOut[FZ_RULES[i][2]](y));
+        if (v > agg) agg = v;
+      }
+      num += y * agg; den += agg;
+    }
+    return { u, md, ms, strengths, level: den > 0 ? num / den : 0 };
+  }
+
+  function updateFuzzy(point) {
+    fz.speed = 0.5 * approachSpeed() + 0.5 * fz.speed;
+    const ft0 = performance.now();
+    const r = fuzzyInfer(point.nSmooth, fz.speed, fz.scale);
+    const fdt = performance.now() - ft0;
+    cc.perf.fuzzyMs = cc.perf.fuzzyMs === null ? fdt : 0.9 * cc.perf.fuzzyMs + 0.1 * fdt;
+    fz.last = Object.assign({ distance: point.nSmooth, speed: fz.speed, label: fuzzyLabel(r.level).text }, r);
+    fz.hist.push(r.level);
+    if (fz.hist.length > 120) fz.hist.shift();
+    ioeUpdate(fz.last, point.time.getTime());
+    renderFuzzy();
+  }
+
+  function fuzzyReset() {
+    fz.speed = 0; fz.hist = []; fz.last = null;
+    if (history.length) updateFuzzy(history[history.length - 1]); else renderFuzzy();
+  }
+
+  function onFuzzyScale() {
+    const v = num("fzScale", 0.3);
+    fz.scale = Math.min(3, Math.max(0.02, v));
+    $("fzScale").value = fz.scale;
+    if (history.length) updateFuzzy(history[history.length - 1]); else renderFuzzy();
+  }
+
+  function buildRuleTable() {
+    $("fzRules").innerHTML = FZ_RULES.map((r, i) =>
+      '<div class="rule-row"><span class="rule-text">IF position is <b>' + FZ_D[r[0]] + '</b> AND speed is <b>' + FZ_S[r[1]] +
+      '</b> THEN alert is <b>' + FZ_O[r[2]] + '</b></span><span class="rule-bar"><i id="fzR' + i + '"></i></span><span class="rule-val" id="fzRv' + i + '">0.00</span></div>'
+    ).join("");
+  }
+
+  function renderFuzzy() {
+    const L = fz.last;
+    if (L) {
+      const lab = fuzzyLabel(L.level);
+      $("fzLevel").textContent = L.level.toFixed(0);
+      $("fzLevel").style.color = lab.color;
+      const tag = $("fzLabel");
+      tag.textContent = lab.text; tag.style.color = lab.color; tag.style.background = lab.bg; tag.style.borderColor = lab.border;
+      $("fzDist").textContent = L.distance.toFixed(3);
+      $("fzSpeed").textContent = (L.speed >= 0 ? "+" : "") + L.speed.toFixed(3);
+      let k = 0; L.strengths.forEach((v, i) => { if (v > L.strengths[k]) k = i; });
+      $("fzDom").textContent = L.strengths[k] > 0 ? FZ_D[FZ_RULES[k][0]] + " · " + FZ_S[FZ_RULES[k][1]] : "--";
+      L.strengths.forEach((v, i) => {
+        if ($("fzR" + i)) { $("fzR" + i).style.width = (v * 100).toFixed(0) + "%"; $("fzRv" + i).textContent = v.toFixed(2); }
+      });
+    } else {
+      $("fzLevel").textContent = "--";
+      $("fzLabel").textContent = "WAITING FOR DATA";
+      FZ_RULES.forEach((r, i) => { if ($("fzR" + i)) { $("fzR" + i).style.width = "0%"; $("fzRv" + i).textContent = "0.00"; } });
+    }
+    drawMF("fzMfD", fzDist, 0, 1, L ? L.distance : null, L ? L.md : null, v => v.toFixed(1));
+    drawMF("fzMfS", fzSpeed.map(f => x => f(x / fz.scale)), -fz.scale, fz.scale, L ? Math.max(-fz.scale, Math.min(fz.scale, L.speed)) : null, L ? L.ms : null, v => v.toFixed(2));
+    drawFuzzyChart();
+  }
+
+  function drawMF(id, fns, x0, x1, xv, degrees, fmtTick) {
+    const { ctx, w, h } = setupCanvas($(id));
+    const pad = { l: 24, r: 8, t: 8, b: 18 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    const xAt = x => pad.l + ((x - x0) / (x1 - x0)) * cw;
+    const yAt = m => pad.t + (1 - m) * ch;
+    [0, 0.5, 1].forEach(m => {
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(m)); ctx.lineTo(w - pad.r, yAt(m)); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right"; ctx.fillText(m.toFixed(1), pad.l - 5, yAt(m) + 3);
+    });
+    fns.forEach((f, k) => {
+      ctx.beginPath();
+      for (let i = 0; i <= 120; i++) {
+        const x = x0 + (x1 - x0) * i / 120, y = yAt(f(x));
+        i ? ctx.lineTo(xAt(x), y) : ctx.moveTo(xAt(x), y);
+      }
+      ctx.strokeStyle = FZ_COLORS[k]; ctx.lineWidth = 2; ctx.stroke();
+    });
+    ctx.fillStyle = "#7891aa";
+    ctx.textAlign = "left"; ctx.fillText(fmtTick(x0), pad.l, h - 4);
+    ctx.textAlign = "center"; ctx.fillText(fmtTick((x0 + x1) / 2), pad.l + cw / 2, h - 4);
+    ctx.textAlign = "right"; ctx.fillText(fmtTick(x1), w - pad.r, h - 4);
+    if (xv !== null && xv !== undefined) {
+      const x = xAt(xv);
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = "#edf6ff"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h - pad.b); ctx.stroke(); ctx.setLineDash([]);
+      if (degrees) degrees.forEach((m, k) => {
+        if (m > 0) { ctx.beginPath(); ctx.arc(x, yAt(m), 3.5, 0, Math.PI * 2); ctx.fillStyle = FZ_COLORS[k]; ctx.fill(); }
+      });
+    }
+  }
+
+  function drawFuzzyChart() {
+    const { ctx, w, h } = setupCanvas($("fzChart"));
+    const pad = { l: 30, r: 10, t: 8, b: 8 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    const yAt = v => pad.t + (1 - v / 100) * ch;
+    [["rgba(72,223,170,.08)", 0, 25], ["rgba(255,198,109,.08)", 25, 50], ["rgba(255,159,90,.09)", 50, 75], ["rgba(255,113,133,.10)", 75, 100]]
+      .forEach(([c, a, b]) => { ctx.fillStyle = c; ctx.fillRect(pad.l, yAt(b), cw, yAt(a) - yAt(b)); });
+    [0, 50, 100].forEach(v => {
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, yAt(v)); ctx.lineTo(w - pad.r, yAt(v)); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right"; ctx.fillText(v, pad.l - 5, yAt(v) + 3);
+    });
+    const data = fz.hist.slice(-60);
+    if (!data.length) return;
+    const xAt = i => pad.l + (data.length === 1 ? cw / 2 : (i / (data.length - 1)) * cw);
+    ctx.beginPath();
+    data.forEach((v, i) => i ? ctx.lineTo(xAt(i), yAt(v)) : ctx.moveTo(xAt(i), yAt(v)));
+    ctx.strokeStyle = "#48dfaa"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke();
+    const last = data[data.length - 1];
+    ctx.beginPath(); ctx.arc(xAt(data.length - 1), yAt(last), 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = fuzzyLabel(last).color; ctx.fill();
+  }
+
+  /* =====================================================================
+     RESULTS AS JSON  (one snapshot of every module)
+     ===================================================================== */
+  let jsonPaused = false;
+  const rnd = (v, d = 4) => (v === null || v === undefined || !Number.isFinite(v)) ? null : Number(v.toFixed(d));
+
+  function nToCm(v) {   // approximate conversion of a normalized output back to centimetres
+    const phys = norm.mode === "proximity" ? 1 - v : v;
+    return rnd(norm.dmin + phys * (norm.dmax - norm.dmin), 1);
+  }
+
+  function buildReport() {
+    const last = history.length ? history[history.length - 1] : null;
+    const dists = history.map(p => p.distance);
+    const fcRmse = fc.n > 0 ? Math.sqrt(fc.se / fc.n) : null;
+    const fcNaive = fc.n > 0 ? Math.sqrt(fc.seNaive / fc.n) : null;
+    const F = fz.last;
+    const rep = {
+      generated_at: new Date().toISOString(),
+      device: { id: lastDeviceId === "Waiting" ? null : lastDeviceId, messages_received: messageTotal, mqtt_state: $("headerStatus").textContent },
+      measurement: last ? { timestamp: last.time.toISOString(), distance_cm: rnd(last.distance, 2), wifi_rssi_dbm: last.rssi, uptime_seconds: last.uptime } : null,
+      session_stats: dists.length ? {
+        samples: dists.length,
+        min_cm: rnd(Math.min(...dists), 2),
+        avg_cm: rnd(dists.reduce((a, b) => a + b, 0) / dists.length, 2),
+        max_cm: rnd(Math.max(...dists), 2)
+      } : { samples: 0 },
+      normalization: {
+        d_min_cm: norm.dmin, d_max_cm: norm.dmax, output_mode: norm.mode, smoothing_alpha: norm.alpha,
+        latest_normalized: last ? rnd(last.norm, 4) : null,
+        latest_physical_position: last ? rnd(last.nSmooth, 4) : null,
+        range_status: last ? (last.outOfRange === "below" ? "below_near_limit_clamped" : last.outOfRange === "above" ? "beyond_far_limit_clamped" : "within_range") : null
+      },
+      neural_network_forecast: {
+        status: $("fcStatus").textContent,
+        horizon_steps: fc.h, training_window_steps: fc.wlen, look_back_steps: fc.L,
+        hidden_neurons: fc.hid, learning_rate: fc.lr, epochs: fc.epochs,
+        blocks_completed: fc.blocks, evaluated_points: fc.n,
+        rmse: rnd(fcRmse), mae: fc.n > 0 ? rnd(fc.ae / fc.n) : null, naive_rmse: rnd(fcNaive),
+        skill_vs_naive_percent: fcRmse !== null && fcNaive > 0 ? rnd((1 - fcRmse / fcNaive) * 100, 2) : null,
+        next_prediction_normalized: fc.pred ? fc.pred.map(v => rnd(v, 4)) : null,
+        next_prediction_distance_cm_approx: fc.pred ? fc.pred.map(nToCm) : null
+      },
+      genetic_algorithm: {
+        status: $("gaStatus").textContent,
+        config: ga.cfg,
+        best_solution: ga.result,
+        convergence: { best_rmse: ga.best.map(v => rnd(v, 5)), population_mean_rmse: ga.mean.map(v => rnd(v, 5)) }
+      },
+      fuzzy_alert: F ? {
+        alert_level_0_100: rnd(F.level, 1),
+        alert_label: F.label,
+        inputs: { position_normalized: rnd(F.distance, 4), approach_speed_per_s: rnd(F.speed, 4), speed_full_scale: fz.scale },
+        memberships: {
+          position: Object.fromEntries(FZ_D.map((n, i) => [n, rnd(F.md[i], 3)])),
+          speed: Object.fromEntries(FZ_S.map((n, i) => [n, rnd(F.ms[i], 3)]))
+        },
+        rules_fired: FZ_RULES.map((r, i) => ({ if: "position is " + FZ_D[r[0]] + " and speed is " + FZ_S[r[1]], then: FZ_O[r[2]], strength: rnd(F.strengths[i], 3) })).filter(r => r.strength > 0.001)
+      } : null
+    };
+    rep.computing_continuum = continuumReport();
+    if ($("jsonHist").checked) {
+      rep.history_last_100 = history.slice(-100).map(p => ({ t: p.time.toISOString(), distance_cm: rnd(p.distance, 2), normalized: rnd(p.norm, 4) }));
+    }
+    return rep;
+  }
+
+  function highlightJson(text) {
+    const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return esc.replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|-?\d+\.?\d*(?:[eE][+-]?\d+)?/g, (m, str, colon, kw) => {
+      if (str) return colon ? '<span class="jk">' + str + '</span>' + colon : '<span class="js">' + str + '</span>';
+      if (kw) return '<span class="jb">' + m + '</span>';
+      return '<span class="jn">' + m + '</span>';
+    });
+  }
+
+  function refreshJson(force) {
+    if (jsonPaused && !force) return;
+    const text = JSON.stringify(buildReport(), null, 2);
+    $("jsonOut").innerHTML = highlightJson(text);
+    $("jsonMeta").textContent = (new Blob([text]).size / 1024).toFixed(1) + " KB · " + new Date().toLocaleTimeString();
+  }
+
+  function toggleJsonPause() {
+    jsonPaused = !jsonPaused;
+    $("jsonPauseBtn").textContent = jsonPaused ? "Resume updates" : "Pause updates";
+  }
+
+  async function copyJson() {
+    const text = JSON.stringify(buildReport(), null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("JSON copied to clipboard.");
+    } catch (e) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+        notify("JSON copied to clipboard.");
+      } catch (e2) { notify("Copy failed. Use Download JSON instead."); }
+    }
+  }
+
+  function downloadJson() {
+    const text = JSON.stringify(buildReport(), null, 2);
+    const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "distance-twin-results.json";
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    notify("JSON downloaded.");
+  }
+
+  /* =====================================================================
+     COMPUTING CONTINUUM  (IoT · edge · fog · cloud · big data · IoE)
+     IoT    : real stream measurements (rate, bytes, RSSI).
+     Edge   : range check + Hampel filter (on first differences) + send-on-delta, run in shadow mode on the same stream.
+     Fog    : tumbling-window aggregation, NN retraining, store-and-forward buffer.
+     Cloud  : MQTT ingestion (EMQX), GA optimisation, long-term archive.
+     Big data: 5 Vs, Welford streaming statistics, histogram, data-reduction funnel.
+     IoE    : debounced alert workflow with actuator (simulated) and human acknowledgement.
+     Task placement is a simulation: its parameters are assumptions, not measurements.
+     ===================================================================== */
+  const TIERS = {
+    edge:  { name: "Edge",  gflops: 0.05, memKB: 150 },
+    fog:   { name: "Fog",   gflops: 5,    bwMbps: 20 },
+    cloud: { name: "Cloud", gflops: 50,   bwMbps: 5 }
+  };
+  const TIER_COLOR = { edge: "#48dfaa", fog: "#ffc66d", cloud: "#5798ff" };
+  const E_COMPUTE = 3.0;   // mJ per MFLOP when computing on the ESP32
+  const E_TX = 1.5;        // mJ per KB transmitted by the ESP32
+  const AGG_BYTES = 96;    // size of one fog window record
+  const WHY = { memory: "memory", pinned: "pinned", storage: "no storage", safety: "safety", outage: "outage", deadline: "too slow" };
+
+  const cc = {
+    iot:   { count: 0, bytes: 0, first: null, lastTs: null, arrivals: [], rssi: null, uptime: null },
+    edge:  { recv: 0, invalid: 0, outliers: 0, forwarded: 0, suppressed: 0, lastSent: null, lastSentTime: 0, buf: [], consec: 0, deadband: 1, heartbeat: 10 },
+    fog:   { win: 10, start: null, vals: [], windows: 0, last: null, recent: [], buffer: 0, nnMs: null },
+    cloud: { outage: false, reconnects: 0, gaMs: null, archived: 0 },
+    bd:    { n: 0, mean: 0, m2: 0, hist: new Array(10).fill(0) },
+    perf:  { fuzzyMs: null },
+    ioe:   { state: "SAFE", pending: null, pendCount: 0, events: [], acks: 0, ackTimeSum: 0, actuator: "idle" },
+    place: { alpha: 0.7, rttFog: 5, rttCloud: 120 }
+  };
+
+  const median = arr => {
+    const s = arr.slice().sort((a, b) => a - b), m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+
+  function ccReset() {
+    Object.assign(cc.iot,  { count: 0, bytes: 0, first: null, lastTs: null, arrivals: [], rssi: null, uptime: null });
+    Object.assign(cc.edge, { recv: 0, invalid: 0, outliers: 0, forwarded: 0, suppressed: 0, lastSent: null, lastSentTime: 0, buf: [], consec: 0 });
+    Object.assign(cc.fog,  { start: null, vals: [], windows: 0, last: null, recent: [], buffer: 0 });
+    Object.assign(cc.cloud, { archived: 0 });
+    Object.assign(cc.bd,   { n: 0, mean: 0, m2: 0, hist: new Array(10).fill(0) });
+    Object.assign(cc.ioe,  { state: "SAFE", pending: null, pendCount: 0, events: [], acks: 0, ackTimeSum: 0, actuator: "idle" });
+    ccRender();
+  }
+
+  // --- IoT: every incoming packet ---
+  function ccIngest(data) {
+    const now = Date.now();
+    cc.iot.count++;
+    cc.iot.bytes += JSON.stringify(data).length;
+    if (cc.iot.first === null) cc.iot.first = now;
+    cc.iot.lastTs = now;
+    cc.iot.arrivals.push(now);
+    if (cc.iot.arrivals.length > 60) cc.iot.arrivals.shift();
+    if (typeof data.wifi_rssi === "number") cc.iot.rssi = data.wifi_rssi;
+    cc.edge.recv++;
+    if (!(typeof data.distance_cm === "number" && Number.isFinite(data.distance_cm))) cc.edge.invalid++;
+  }
+
+  // --- Edge + fog + big data: every valid reading ---
+  function ccProcess(point) {
+    const e = cc.edge, now = point.time.getTime(), d = point.distance;
+    if (!(d >= 2 && d <= 400)) { e.invalid++; return; }          // HC-SR04 valid range
+    let x = d;
+    if (e.buf.length >= 5) {                                      // Hampel filter on first differences (trend-aware)
+      const diffs = [];
+      for (let i = 1; i < e.buf.length; i++) diffs.push(e.buf[i] - e.buf[i - 1]);
+      const md = median(diffs);
+      const mad = median(diffs.map(v => Math.abs(v - md)));
+      const sigma = Math.max(1.4826 * mad, 1.5);
+      const pred = e.buf[e.buf.length - 1] + md;                  // where the trend says the next value should be
+      if (Math.abs(d - pred) > 3 * sigma && e.consec < 2) { x = pred; e.outliers++; e.consec++; }
+      else e.consec = 0;                                          // a third deviant sample in a row is accepted as a real level change
+    }
+    e.buf.push(x);
+    if (e.buf.length > 7) e.buf.shift();
+    const due = (now - e.lastSentTime) / 1000 >= e.heartbeat;     // send-on-delta with heartbeat
+    if (e.lastSent === null || Math.abs(x - e.lastSent) >= e.deadband || due) {
+      e.forwarded++; e.lastSent = x; e.lastSentTime = now;
+    } else {
+      e.suppressed++;
+    }
+    fogPush(e.lastSent, now);                                     // fog sees the zero-order hold of what was forwarded
+    bdPush(d, point.nSmooth);
+  }
+
+  function fogPush(v, now) {
+    const f = cc.fog;
+    if (f.start === null) f.start = now;
+    f.vals.push(v);
+    if ((now - f.start) / 1000 >= f.win) {
+      const n = f.vals.length;
+      const mean = f.vals.reduce((a, b) => a + b, 0) / n;
+      const std = Math.sqrt(f.vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n);
+      f.last = { t: new Date(now).toISOString(), count: n, min: Math.min(...f.vals), mean, max: Math.max(...f.vals), std };
+      f.recent.push(f.last);
+      if (f.recent.length > 6) f.recent.shift();
+      f.windows++;
+      if (cc.cloud.outage) f.buffer++; else cc.cloud.archived++;
+      f.vals = []; f.start = now;
+    }
+  }
+
+  function bdPush(d, pos) {                                        // Welford online mean / variance + histogram
+    const b = cc.bd;
+    b.n++;
+    const delta = d - b.mean;
+    b.mean += delta / b.n;
+    b.m2 += delta * (d - b.mean);
+    b.hist[Math.max(0, Math.min(9, Math.floor(pos * 10)))]++;
+  }
+
+  // --- IoE: debounced alert workflow ---
+  const RANK = { SAFE: 0, CAUTION: 1, WARNING: 2, CRITICAL: 3 };
+  function ioeUpdate(L, ts) {
+    const io = cc.ioe;
+    if (!L) return;
+    if (L.label === io.state) { io.pending = null; io.pendCount = 0; return; }
+    if (L.label !== io.pending) { io.pending = L.label; io.pendCount = 1; } else io.pendCount++;
+    if (io.pendCount >= 3) {
+      const prev = io.state;
+      io.state = L.label; io.pending = null; io.pendCount = 0;
+      emitIoEEvent(prev, L.label, L.level, ts);
+    }
+  }
+  function emitIoEEvent(prev, to, level, ts) {
+    const io = cc.ioe;
+    let process, people, status;
+    if (to === "SAFE") {
+      process = "Incident closed; actuator released (simulated)"; people = "No action needed"; status = "resolved";
+      io.events.forEach(ev => { if (ev.status === "open") ev.status = "resolved"; });
+    } else if (RANK[to] < RANK[prev]) {
+      process = "De-escalated from " + prev + "; actuator released (simulated)"; people = "Informational"; status = "logged";
+    } else if (to === "CAUTION") {
+      process = "Logged; dashboard highlighted"; people = "Informational"; status = "logged";
+    } else if (to === "WARNING") {
+      process = "Supervisor notified (simulated)"; people = "Acknowledgement required"; status = "open";
+    } else {
+      process = "Actuator command: slow or stop the machine (simulated) and notify supervisor"; people = "Acknowledgement required"; status = "open";
+    }
+    io.actuator = to === "CRITICAL" ? "engaged (simulated)" : "idle";
+    io.events.unshift({ ts, time: new Date(ts).toISOString(), from: prev, to, level: Math.round(level), process, people, status, ack_after_s: null });
+    if (io.events.length > 30) io.events.pop();
+  }
+  function ccAckAll() {
+    const now = Date.now();
+    let n = 0;
+    cc.ioe.events.forEach(ev => {
+      if (ev.status === "open") {
+        ev.status = "acknowledged"; ev.ack_after_s = +((now - ev.ts) / 1000).toFixed(1);
+        cc.ioe.acks++; cc.ioe.ackTimeSum += (now - ev.ts) / 1000; n++;
+      }
+    });
+    notify(n ? n + " alert(s) acknowledged." : "No open alerts.");
+    ccRender();
+  }
+
+  // --- Task placement (offloading simulation) ---
+  function ccTasks(dt) {
+    const L = fc.L, h = fc.h, hid = fc.hid, wlen = fc.wlen;
+    const samples = Math.max(0, wlen - L - h + 1);
+    const w = L * hid + hid * h;                                   // weights of the MLP
+    const trainMflop = samples * w * fc.epochs * 6 / 1e6;           // about 6 FLOP per weight per sample per epoch
+    const gaMflop = Math.round(num("gaPop", 12)) * Math.round(num("gaGen", 8)) * samples * w * GA_EPOCHS * 6 / 1e6;
+    const blockMs = Math.max(1000, (dt || 1) * h * 1000);
+    const trainKB = samples * (L + h) * 8 / 1024;
+    return [
+      { id: "edge_filter",   name: "Range check, Hampel filter, send-on-delta", src: "Edge",          mflop: 0.02,  kb: 0.1, deadline: 50,      mem: 2,  pin: "edge" },
+      { id: "normalization", name: "Min-max normalization + EMA",               src: "Normalization", mflop: 0.01,  kb: 0.1, deadline: 50,      mem: 1 },
+      { id: "fuzzy",         name: "Fuzzy proximity alert",                     src: "Fuzzy",         mflop: 0.05,  kb: 0.1, deadline: 100,     mem: 4, critical: true },
+      { id: "nn_inference",  name: "NN forecast inference",                     src: "Forecast",      mflop: 2 * w / 1e6 + 0.005, kb: L * 8 / 1024, deadline: 200, mem: w * 8 / 1024 },
+      { id: "nn_training",   name: "NN retraining (every block)",               src: "Forecast",      mflop: trainMflop, kb: wlen * 8 / 1024, deadline: blockMs, mem: trainKB },
+      { id: "ga",            name: "GA hyper-parameter search",                 src: "Genetic alg.",  mflop: gaMflop, kb: wlen * 8 / 1024, deadline: 60000, mem: trainKB },
+      { id: "archive",       name: "Long-term archive and historical analytics", src: "Big data",     mflop: 0.5,   kb: 1, deadline: 3600000, mem: 0, persistent: true }
+    ];
+  }
+
+  function ccPlacement(dt) {
+    const P = cc.place, outage = cc.cloud.outage;
+    return ccTasks(dt).map(t => {
+      const opts = ["edge", "fog", "cloud"].map(k => {
+        let T, E, ok = true, why = null;
+        if (k === "edge") {
+          T = t.mflop / TIERS.edge.gflops; E = t.mflop * E_COMPUTE;
+          if (t.mem > TIERS.edge.memKB) { ok = false; why = "memory"; }
+        } else {
+          const tier = TIERS[k], rtt = k === "fog" ? P.rttFog : P.rttCloud;
+          T = t.mflop / tier.gflops + rtt + t.kb * 8 / tier.bwMbps; E = t.kb * E_TX;
+          if (k === "cloud" && outage) { ok = false; why = "outage"; }
+        }
+        if (t.pin && t.pin !== k) { ok = false; why = "pinned"; }
+        if (t.persistent && k !== "cloud") { ok = false; why = "storage"; }
+        if (t.critical && k === "cloud") { ok = false; why = "safety"; }
+        if (ok && T > t.deadline) { ok = false; why = "deadline"; }
+        return { k, T, E, ok, why, cost: null };
+      });
+      const eRef = Math.max(...opts.map(o => o.E), 1e-9);
+      const feas = opts.filter(o => o.ok);
+      feas.forEach(o => { o.cost = P.alpha * (o.T / t.deadline) + (1 - P.alpha) * (o.E / eRef); });
+      let best, note = null;
+      if (feas.length) {
+        best = feas.reduce((a, b) => (b.cost < a.cost ? b : a));
+      } else {
+        const soft = opts.filter(o => !["pinned", "storage", "safety", "outage"].includes(o.why));
+        if (soft.length) { best = soft.reduce((a, b) => (b.T < a.T ? b : a)); note = "deadline missed"; }
+        else { best = opts.find(o => o.k === "fog"); note = "buffered at fog until the cloud returns"; }
+      }
+      return { t, opts, best: { k: best.k, note } };
+    });
+  }
+
+  function ccMetrics() {
+    const now = Date.now(), c = cc, e = c.edge, f = c.fog, b = c.bd, io = c.ioe;
+    const dt = medianDtSeconds();
+    const arr = c.iot.arrivals;
+    let rate = null, jit = null;
+    if (arr.length >= 3) {
+      const span = (arr[arr.length - 1] - arr[0]) / 1000;
+      rate = span > 0 ? (arr.length - 1) / span : null;
+      const d = []; for (let i = 1; i < arr.length; i++) d.push(arr[i] - arr[i - 1]);
+      const mu = d.reduce((a, v) => a + v, 0) / d.length;
+      jit = Math.sqrt(d.reduce((a, v) => a + (v - mu) * (v - mu), 0) / d.length);
+    }
+    const elapsed = c.iot.first !== null ? (c.iot.lastTs - c.iot.first) / 1000 : 0;
+    const rawBps = elapsed > 2 ? c.iot.bytes / elapsed : null;
+    const rawDay = rawBps !== null ? rawBps * 86400 : null;
+    const fwdDay = rawDay !== null && e.recv > 0 ? rawDay * e.forwarded / e.recv : null;
+    const aggDay = rawDay !== null ? AGG_BYTES * 86400 / f.win : null;
+    const quality = e.recv > 0 ? 1 - (e.invalid + e.outliers) / e.recv : null;
+    const online = c.iot.lastTs !== null && (now - c.iot.lastTs) < Math.max(10000, (dt || 1) * 5000);
+    const std = b.n > 1 ? Math.sqrt(b.m2 / (b.n - 1)) : null;
+    const open = io.events.filter(ev => ev.status === "open").length;
+    const pillars = {
+      things: online,
+      data: quality !== null && quality >= 0.9,
+      process: !!(fz.last),
+      people: open === 0
+    };
+    return {
+      dt, rate, jit, elapsed, rawDay, fwdDay, aggDay, quality, online, std, open, pillars,
+      health: Object.values(pillars).filter(Boolean).length,
+      reduction: e.recv > 0 ? 1 - e.forwarded / e.recv : null,
+      meanAck: io.acks > 0 ? io.ackTimeSum / io.acks : null,
+      place: ccPlacement(dt)
+    };
+  }
+
+  function onCcParams() {
+    cc.edge.deadband = Math.max(0, num("ccDeadband", 1));
+    cc.edge.heartbeat = Math.max(1, num("ccHeartbeat", 10));
+    cc.fog.win = Math.max(2, num("ccWindow", 10));
+    cc.place.rttFog = Math.max(0, num("ccRttFog", 5));
+    cc.place.rttCloud = Math.max(0, num("ccRttCloud", 120));
+    cc.place.alpha = Math.min(1, Math.max(0, num("ccAlpha", 0.7)));
+    const out = $("ccOutage").checked;
+    if (cc.cloud.outage && !out && cc.fog.buffer > 0) {
+      cc.cloud.archived += cc.fog.buffer;
+      notify(cc.fog.buffer + " buffered record(s) flushed to the cloud.");
+      cc.fog.buffer = 0;
+    }
+    cc.cloud.outage = out;
+    ccRender();
+  }
+
+  // --- rendering ---
+  const f2 = (v, d = 2, s = "") => (v === null || v === undefined || !Number.isFinite(v)) ? "--" : v.toFixed(d) + s;
+  const fmtMs = ms => ms < 1000 ? ms.toFixed(ms < 10 ? 2 : 0) + " ms" : ms < 60000 ? (ms / 1000).toFixed(1) + " s" : (ms / 60000).toFixed(1) + " min";
+  const fmtBytes = b => (b === null || b === undefined) ? "--" : b < 1024 ? b.toFixed(0) + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : b < 1073741824 ? (b / 1048576).toFixed(1) + " MB" : (b / 1073741824).toFixed(2) + " GB";
+
+  function ccRender() {
+    const m = ccMetrics(), c = cc, e = c.edge, f = c.fog, io = c.ioe;
+    const set = (id, v) => { $(id).textContent = v; };
+    set("ccFlow1", c.iot.count); set("ccFlow2", e.forwarded); set("ccFlow3", f.windows); set("ccFlow4", c.cloud.archived);
+
+    set("ccIotDt", m.dt ? f2(m.dt, 2, " s") : "--");
+    set("ccIotRate", m.rate ? f2(m.rate, 2, " msg/s") : "--");
+    set("ccIotRssi", c.iot.rssi !== null ? c.iot.rssi + " dBm" : "--");
+
+    set("ccEdgeFlow", e.recv + " → " + e.forwarded);
+    set("ccEdgeRed", m.reduction !== null ? f2(m.reduction * 100, 1, "%") : "--");
+    set("ccEdgeOut", e.outliers + " / " + e.invalid);
+
+    set("ccFogWin", f.windows + " × " + f.win + " s");
+    set("ccFogLast", f.last ? f2(f.last.mean, 1) + " ± " + f2(f.last.std, 1) + " cm" : "--");
+    set("ccFogNN", f.nnMs !== null ? f2(f.nnMs, 0, " ms") : "--");
+    set("ccFogBuf", f.buffer + (c.cloud.outage ? " (cloud down)" : ""));
+
+    set("ccCloudState", $("headerStatus").textContent + (c.cloud.outage ? " · uplink outage (sim.)" : ""));
+    set("ccCloudJit", m.jit !== null ? f2(m.jit, 0, " ms") : "--");
+    set("ccCloudGA", c.cloud.gaMs !== null ? f2(c.cloud.gaMs / 1000, 1, " s") : "--");
+    set("ccCloudArch", c.cloud.archived);
+
+    set("ccBdVol", c.iot.count + " · " + fmtBytes(c.iot.bytes));
+    set("ccBdQual", m.quality !== null ? f2(m.quality * 100, 1, "%") : "--");
+    set("ccBdStat", c.bd.n > 1 ? f2(c.bd.mean, 1) + " ± " + f2(m.std, 1) + " cm" : "--");
+
+    set("ccIoeLoop", m.health + " / 4");
+    set("ccIoeOpen", m.open);
+    set("ccIoeAck", m.meanAck !== null ? f2(m.meanAck, 1, " s") : "--");
+
+    // funnel (log scale)
+    const vals = [m.rawDay, m.fwdDay, m.aggDay];
+    const logs = vals.map(v => v === null ? 0 : Math.log10(v + 1));
+    const mx = Math.max(...logs, 1e-9);
+    vals.forEach((v, i) => { $("ccFB" + i).style.width = (logs[i] / mx * 100).toFixed(1) + "%"; set("ccFV" + i, v === null ? "--" : fmtBytes(v) + "/day"); });
+    set("ccFunnelNote", m.rawDay ? "Edge filtering and fog windows cut the stored volume by " + f2((1 - m.aggDay / m.rawDay) * 100, 1, "%") + " compared with keeping every raw packet." : "Waiting for data.");
+    set("ccV1", fmtBytes(c.iot.bytes));
+    set("ccV2", m.rate ? f2(m.rate, 2, " /s") : "--");
+    set("ccV3", "4 raw · 3 derived");
+    set("ccV4", m.quality !== null ? f2(m.quality * 100, 1, "%") : "--");
+    set("ccV5", io.events.length + " events");
+    drawCcHist();
+
+    // IoE pillars
+    set("ccPThings", m.online ? "ONLINE" : (c.iot.count ? "OFFLINE" : "--"));
+    set("ccPThingsSub", lastDeviceId === "Waiting" ? "No device yet" : lastDeviceId);
+    set("ccPData", m.quality !== null ? f2(m.quality * 100, 0, "% valid") : "--");
+    set("ccPDataSub", fc.pred ? "Forecast ready (" + fc.h + " steps)" : "Forecast not running");
+    set("ccPProcess", fz.last ? io.state : "--");
+    set("ccPProcessSub", "Actuator: " + io.actuator);
+    set("ccPPeople", m.open ? m.open + " OPEN" : "CLEAR");
+    set("ccPPeopleSub", io.acks + " acknowledged");
+    const col = { open: "#ff7185", acknowledged: "#48dfaa", resolved: "#8da5bd", logged: "#ffc66d" };
+    $("ccEvents").innerHTML = io.events.length ? io.events.slice(0, 8).map(ev =>
+      '<div class="ioe-ev"><span class="time">' + new Date(ev.ts).toLocaleTimeString() + '</span><span><b>' + ev.from + ' → ' + ev.to +
+      '</b> · level ' + ev.level + '<small>' + ev.process + ' · ' + ev.people + '</small></span><span class="chip" style="color:' + col[ev.status] +
+      ';border:1px solid ' + col[ev.status] + '">' + ev.status.toUpperCase() + '</span></div>').join("")
+      : '<div class="empty">No alert events yet. Events appear when the fuzzy alert level changes.</div>';
+
+    renderPlacement(m.place);
+  }
+
+  function renderPlacement(rows) {
+    const cnt = { edge: 0, fog: 0, cloud: 0 };
+    rows.forEach(r => cnt[r.best.k]++);
+    $("ccStatus").textContent = "EDGE " + cnt.edge + " · FOG " + cnt.fog + " · CLOUD " + cnt.cloud;
+    const head = '<thead><tr><th>Task (source panel)</th><th>MFLOP</th><th>Deadline</th><th>Edge</th><th>Fog</th><th>Cloud</th><th>Placement</th></tr></thead>';
+    const body = rows.map(r => {
+      const cells = r.opts.map(o => {
+        const sel = r.best.k === o.k;
+        const txt = o.ok ? fmtMs(o.T) : "× " + WHY[o.why];
+        const style = sel ? ' style="background:' + TIER_COLOR[o.k] + '"' : "";
+        return '<td class="' + (sel ? "sel" : o.ok ? "" : "no") + '"' + style + '>' + txt + '</td>';
+      }).join("");
+      const chip = '<span class="chip" style="background:' + TIER_COLOR[r.best.k] + ';color:#04131d">' + r.best.k.toUpperCase() + '</span>';
+      return '<tr><td class="t">' + r.t.name + '<small>' + r.t.src + '</small></td><td>' + (r.t.mflop < 1 ? r.t.mflop.toFixed(3) : r.t.mflop.toFixed(1)) +
+        '</td><td>' + fmtMs(r.t.deadline) + '</td>' + cells + '<td>' + chip + (r.best.note ? '<small style="display:block;color:#8da5bd;font-size:10px;margin-top:3px">' + r.best.note + '</small>' : "") + '</td></tr>';
+    }).join("");
+    $("ccPlace").innerHTML = head + '<tbody>' + body + '</tbody>';
+  }
+
+  function drawCcHist() {
+    const { ctx, w, h } = setupCanvas($("ccHist"));
+    const pad = { l: 30, r: 8, t: 8, b: 18 };
+    const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+    const hist = cc.bd.hist, mx = Math.max(...hist, 1);
+    ctx.font = '10px "DM Mono", monospace';
+    [0, 0.5, 1].forEach(v => {
+      const y = pad.t + (1 - v) * ch;
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right"; ctx.fillText(Math.round(mx * v), pad.l - 5, y + 3);
+    });
+    const bw = cw / 10;
+    hist.forEach((v, i) => {
+      const bh = (v / mx) * ch;
+      ctx.fillStyle = "rgba(169,139,255,.75)";
+      ctx.fillRect(pad.l + i * bw + 2, pad.t + ch - bh, bw - 4, bh);
+    });
+    ctx.fillStyle = "#7891aa"; ctx.textAlign = "left"; ctx.fillText("0", pad.l, h - 4);
+    ctx.textAlign = "right"; ctx.fillText("1", w - pad.r, h - 4);
+  }
+
+  function continuumReport() {
+    const m = ccMetrics(), c = cc, e = c.edge, f = c.fog, io = c.ioe, b = c.bd;
+    return {
+      note: "IoT, edge inputs and cloud figures are measured on the live stream. The edge filter runs in shadow mode. Task placement is a simulation with the stated assumptions.",
+      iot: { duty: "Sense the distance and publish it over MQTT", messages: c.iot.count, bytes: c.iot.bytes, sampling_interval_s: rnd(m.dt, 3), message_rate_per_s: rnd(m.rate, 2), wifi_rssi_dbm: c.iot.rssi, device_online: m.online },
+      edge: {
+        duty: "Clean and compress at the source (range check, Hampel filter, send-on-delta)",
+        parameters: { deadband_cm: e.deadband, heartbeat_s: e.heartbeat, outlier_filter: "Hampel on first differences, window 7, 3 sigma, sigma floor 1.5 cm" },
+        received: e.recv, forwarded: e.forwarded, suppressed: e.suppressed, invalid: e.invalid, outliers_corrected: e.outliers,
+        traffic_reduction_percent: m.reduction !== null ? rnd(m.reduction * 100, 2) : null
+      },
+      fog: {
+        duty: "Aggregate in windows, retrain the NN, buffer while the cloud is unreachable",
+        window_s: f.win, windows_closed: f.windows, buffered_records: f.buffer,
+        nn_train_predict_ms: rnd(f.nnMs, 1), fuzzy_inference_ms: rnd(c.perf.fuzzyMs, 3),
+        recent_windows: f.recent.map(w => ({ t: w.t, count: w.count, min_cm: rnd(w.min, 2), mean_cm: rnd(w.mean, 2), max_cm: rnd(w.max, 2), std_cm: rnd(w.std, 2) }))
+      },
+      cloud: {
+        duty: "MQTT ingestion, heavy GA optimisation, long-term archive",
+        broker_state: $("headerStatus").textContent, uplink_outage_simulated: c.cloud.outage, reconnects: c.cloud.reconnects,
+        inter_arrival_jitter_ms: rnd(m.jit, 1), ga_runtime_s: c.cloud.gaMs !== null ? rnd(c.cloud.gaMs / 1000, 2) : null, archived_records: c.cloud.archived
+      },
+      big_data: {
+        duty: "Characterise and condense the stream (five Vs, streaming statistics, reduction)",
+        volume: { records: c.iot.count, bytes: c.iot.bytes }, velocity_msg_per_s: rnd(m.rate, 2),
+        variety: { raw_fields: 4, derived_fields: 3 },
+        veracity_quality_percent: m.quality !== null ? rnd(m.quality * 100, 2) : null,
+        value_alert_events: io.events.length,
+        streaming_stats_cm: { n: b.n, mean: rnd(b.mean, 2), std: rnd(m.std, 2) },
+        position_histogram_10_bins: b.hist.slice(),
+        projected_bytes_per_day: { raw: rnd(m.rawDay, 0), after_edge_filter: rnd(m.fwdDay, 0), after_fog_windows: rnd(m.aggDay, 0) }
+      },
+      ioe: {
+        duty: "Close the loop between things, data, process and people",
+        loop_health_of_4: m.health, pillars: m.pillars, alert_state: io.state, actuator: io.actuator,
+        open_alerts: m.open, acknowledged: io.acks, mean_ack_time_s: rnd(m.meanAck, 1),
+        recent_events: io.events.slice(0, 10).map(ev => ({ time: ev.time, from: ev.from, to: ev.to, level: ev.level, process: ev.process, people: ev.people, status: ev.status, ack_after_s: ev.ack_after_s }))
+      },
+      task_placement: {
+        parameters: { latency_weight_alpha: c.place.alpha, fog_rtt_ms: c.place.rttFog, cloud_rtt_ms: c.place.rttCloud, cloud_outage: c.cloud.outage,
+          tiers: { edge_gflops: TIERS.edge.gflops, fog_gflops: TIERS.fog.gflops, cloud_gflops: TIERS.cloud.gflops } },
+        tasks: m.place.map(r => ({
+          task: r.t.name, source_panel: r.t.src, mflop: rnd(r.t.mflop, 3), deadline_ms: rnd(r.t.deadline, 0), placement: r.best.k, note: r.best.note,
+          latency_ms: Object.fromEntries(r.opts.map(o => [o.k, o.ok ? rnd(o.T, 2) : "not allowed: " + WHY[o.why]]))
+        }))
+      }
+    };
+  }
+
+  /* =====================================================================
+     DEMO SIGNAL (synthetic, only for testing without hardware)
+     ===================================================================== */
+  let demoTimer = null, demoT = 0;
+  function toggleDemo() {
+    if (demoTimer) {
+      clearInterval(demoTimer); demoTimer = null;
+      $("demoBtn").textContent = "Start demo signal";
+      return;
+    }
+    $("demoBtn").textContent = "Stop demo signal";
+    notify("Demo signal running: synthetic data, 10 samples per second.");
+    demoTimer = setInterval(() => {
+      demoT++;
+      const d = 110 + 80 * Math.sin(demoT / 14) + 15 * Math.sin(demoT / 4.3) + randn() * 1.5;
+      receiveData({ device: "SIMULATED", distance_cm: Math.max(5, d), wifi_rssi: -58, uptime_seconds: demoT / 10 });
+    }, 100);
+  }
+
+  /* =====================================================================
+     MQTT + DASHBOARD
+     ===================================================================== */
+  function setConnection(connected, label) {
+    $("mqttDot").className = connected ? "dot live" : "dot bad";
+    $("headerStatus").textContent = label;
+    $("brokerState").textContent = connected ? "Connected · WSS" : label;
+    $("connectBtn").disabled = connected;
+    $("disconnectBtn").disabled = !connected;
+  }
+
+  function connectMQTT() {
+    if (typeof mqtt === "undefined") {
+      notify("MQTT library did not load. Check your internet connection.");
+      return;
+    }
+    const username = $("mqttUser").value.trim();
+    const password = $("mqttPass").value;
+    if (!username || !password) {
+      notify("Enter your read-only MQTT username and password.");
+      return;
+    }
+    if (client) {
+      try { client.end(true); } catch(e) {}
+      client = null;
+    }
+    setConnection(false, "CONNECTING");
+    $("brokerState").textContent = "Connecting...";
+    client = mqtt.connect(MQTT_URL, {
+      username,
+      password,
+      clientId: "distance-twin-web-" + Math.random().toString(16).slice(2, 10),
+      clean: true,
+      connectTimeout: 10000,
+      reconnectPeriod: 3000,
+      keepalive: 30
+    });
+
+    client.on("connect", () => {
+      setConnection(true, "ONLINE");
+      client.subscribe(MQTT_TOPIC, {qos: 0}, err => {
+        if (err) notify("Connected, but topic subscription failed.");
+        else notify("Connected. Listening for Distance ESP32.");
+      });
+    });
+    client.on("reconnect", () => { cc.cloud.reconnects++; setConnection(false, "RECONNECTING"); });
+    client.on("offline", () => setConnection(false, "OFFLINE"));
+    client.on("close", () => setConnection(false, "OFFLINE"));
+    client.on("error", err => {
+      console.error("MQTT error:", err);
+      setConnection(false, "CONNECTION ERROR");
+    });
+    client.on("message", (topic, payload) => {
+      if (topic !== MQTT_TOPIC) return;
+      try {
+        const data = JSON.parse(payload.toString());
+        receiveData(data);
+      } catch (e) {
+        console.warn("Invalid MQTT JSON packet", e);
+      }
+    });
+  }
+
+  function disconnectMQTT() {
+    if (client) {
+      client.end(true);
+      client = null;
+    }
+    setConnection(false, "OFFLINE");
+    notify("Disconnected from broker.");
+  }
+
+  function receiveData(data) {
+    messageTotal++;
+    ccIngest(data);
+    latestPacket = data;
+    lastDeviceId = data.device || "DistanceESP32";
+    $("deviceId").textContent = lastDeviceId;
+    $("messageCount").textContent = messageTotal.toLocaleString();
+    $("packetTime").textContent = new Date().toLocaleTimeString();
+    $("lastUpdate").textContent = "Updated " + new Date().toLocaleTimeString();
+    $("downloadBtn").disabled = false;
+
+    if (typeof data.distance_cm === "number" && Number.isFinite(data.distance_cm)) {
+      const point = {time: new Date(), distance: data.distance_cm, rssi: data.wifi_rssi ?? null, uptime: data.uptime_seconds ?? null};
+      computeNorm(point, history.length ? history[history.length - 1] : null);
+      history.push(point);
+      if (history.length > 6000) history.shift();
+      renderReading(point);
+      renderNorm(point);
+      renderStats();
+      drawChart();
+      drawNormChart();
+      addFeed(point, data.device || "DistanceESP32");
+      forecastOnPoint(point.norm);
+      updateFuzzy(point);
+      ccProcess(point);
+    } else {
+      addFeed({time:new Date(), distance:null}, data.device || "DistanceESP32");
+      $("rangeState").textContent = "NO VALID READING";
+    }
+  }
+
+  function renderReading(point) {
+    $("distanceValue").textContent = fmt(point.distance);
+    let state = "FAR";
+    if (point.distance < 20) state = "VERY CLOSE";
+    else if (point.distance < 100) state = "MEDIUM";
+    $("rangeState").textContent = state;
+    $("rangeState").style.color = point.distance < 20 ? "var(--red)" : point.distance < 100 ? "var(--amber)" : "var(--green)";
+    $("rangeState").style.background = point.distance < 20 ? "#4b2331" : point.distance < 100 ? "#49371f" : "#163b3b";
+    if (point.rssi !== null) {
+      $("rssiValue").textContent = point.rssi + " dBm";
+      const quality = point.rssi > -55 ? "Excellent signal" : point.rssi > -67 ? "Good signal" : point.rssi > -75 ? "Fair signal" : "Weak signal";
+      $("signalQuality").textContent = quality;
+      const bars = point.rssi > -55 ? 5 : point.rssi > -67 ? 4 : point.rssi > -75 ? 3 : point.rssi > -85 ? 2 : 1;
+      [...$("signalBars").children].forEach((bar,i) => bar.style.background = i < bars ? "var(--green)" : "#24415c");
+    }
+    if (point.uptime !== null) $("uptimeValue").textContent = formatUptime(point.uptime);
+  }
+
+  function formatUptime(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const h = String(Math.floor(s / 3600)).padStart(2,"0");
+    const m = String(Math.floor((s % 3600) / 60)).padStart(2,"0");
+    const sec = String(s % 60).padStart(2,"0");
+    return `${h}:${m}:${sec}`;
+  }
+
+  function renderStats() {
+    if (!history.length) return;
+    const values = history.map(p => p.distance);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const avg = values.reduce((a,b) => a+b,0) / values.length;
+    $("minValue").textContent = fmt(min) + " cm";
+    $("avgValue").textContent = fmt(avg) + " cm";
+    $("maxValue").textContent = fmt(max) + " cm";
+  }
+
+  function addFeed(point, device) {
+    const list = $("feedList");
+    if (list.querySelector(".empty")) list.innerHTML = "";
+    const item = document.createElement("div");
+    item.className = "feed-item";
+    const time = document.createElement("span");
+    time.className = "feed-time";
+    time.textContent = point.time.toLocaleTimeString();
+    const name = document.createElement("span");
+    name.textContent = device;
+    const value = document.createElement("span");
+    value.className = "feed-value";
+    value.textContent = point.distance === null ? "No reading" : fmt(point.distance) + " cm";
+    const nv = document.createElement("span");
+    nv.className = "feed-norm";
+    nv.textContent = point.distance === null ? "" : "n=" + point.norm.toFixed(3);
+    item.append(time,name,value,nv);
+    list.prepend(item);
+    while (list.children.length > 12) list.removeChild(list.lastChild);
+    $("feedCount").textContent = messageTotal + " EVENTS";
+  }
+
+  function drawChart() {
+    const { ctx, w, h } = setupCanvas($("distanceChart"));
+    const data = history.slice(-60);
+    const pad = {l:42,r:12,t:14,b:26};
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    ctx.textAlign = "right";
+    if (!data.length) {
+      ctx.fillStyle = "#8da5bd";
+      ctx.textAlign = "center";
+      ctx.fillText("Waiting for incoming measurements",w/2,h/2);
+      return;
+    }
+    let min = Math.min(...data.map(p=>p.distance));
+    let max = Math.max(...data.map(p=>p.distance));
+    const span = Math.max(20,max-min);
+    min = Math.max(0,min-span*.2);
+    max = max+span*.2;
+    for(let i=0;i<=4;i++){
+      const y=pad.t+(ch/4)*i;
+      ctx.strokeStyle="#1b344c";ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();
+      const val=max-(max-min)*i/4;
+      ctx.fillStyle="#7891aa";ctx.fillText(val.toFixed(0),pad.l-8,y+3);
+    }
+    const xAt=i=>pad.l+(data.length===1?cw/2:(i/(data.length-1))*cw);
+    const yAt=v=>pad.t+((max-v)/(max-min))*ch;
+    const gradient=ctx.createLinearGradient(0,pad.t,0,h-pad.b);
+    gradient.addColorStop(0,"rgba(85,223,240,.27)");
+    gradient.addColorStop(1,"rgba(85,223,240,0)");
+    ctx.beginPath();
+    data.forEach((p,i)=>i?ctx.lineTo(xAt(i),yAt(p.distance)):ctx.moveTo(xAt(i),yAt(p.distance)));
+    ctx.lineTo(xAt(data.length-1),h-pad.b);
+    ctx.lineTo(xAt(0),h-pad.b);
+    ctx.closePath();ctx.fillStyle=gradient;ctx.fill();
+    ctx.beginPath();
+    data.forEach((p,i)=>i?ctx.lineTo(xAt(i),yAt(p.distance)):ctx.moveTo(xAt(i),yAt(p.distance)));
+    ctx.strokeStyle="#55dff0";ctx.lineWidth=2.4;ctx.lineJoin="round";ctx.lineCap="round";ctx.stroke();
+    const last=data[data.length-1];
+    ctx.beginPath();ctx.arc(xAt(data.length-1),yAt(last.distance),4,0,Math.PI*2);
+    ctx.fillStyle="#55dff0";ctx.fill();
+    ctx.strokeStyle="#dffcff";ctx.lineWidth=1.5;ctx.stroke();
+    ctx.textAlign="left";ctx.fillStyle="#7891aa";
+    ctx.fillText("OLDER",pad.l,h-5);
+    ctx.textAlign="right";ctx.fillText("LATEST",w-pad.r,h-5);
+  }
+
+  function drawNormChart() {
+    const { ctx, w, h } = setupCanvas($("normChart"));
+    const data = history.slice(-60);
+    const pad = {l:34,r:10,t:8,b:8};
+    const cw = w-pad.l-pad.r, ch = h-pad.t-pad.b;
+    ctx.font = '10px "DM Mono", monospace';
+    [0,0.5,1].forEach(v => {
+      const y = pad.t + (1-v)*ch;
+      ctx.strokeStyle = "#1b344c"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+      ctx.fillStyle = "#7891aa"; ctx.textAlign = "right"; ctx.fillText(v.toFixed(1), pad.l-6, y+3);
+    });
+    if (!data.length) return;
+    const xAt = i => pad.l + (data.length===1 ? cw/2 : (i/(data.length-1))*cw);
+    const yAt = v => pad.t + (1-v)*ch;
+    ctx.beginPath();
+    data.forEach((p,i) => i ? ctx.lineTo(xAt(i),yAt(p.norm)) : ctx.moveTo(xAt(i),yAt(p.norm)));
+    ctx.strokeStyle = "#a98bff"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke();
+    const last = data[data.length-1];
+    ctx.beginPath(); ctx.arc(xAt(data.length-1),yAt(last.norm),3.5,0,Math.PI*2);
+    ctx.fillStyle = "#a98bff"; ctx.fill();
+  }
+
+  function downloadCSV() {
+    if (!history.length) return notify("There is no session history to download yet.");
+    const rows = [["timestamp","distance_cm","normalized_0_1","wifi_rssi_dbm","uptime_seconds"]];
+    history.forEach(p => rows.push([p.time.toISOString(),p.distance,p.norm.toFixed(5),p.rssi ?? "",p.uptime ?? ""]));
+    const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url;a.download="distance-session-history.csv";
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+    notify("Session CSV downloaded.");
+  }
+
+  function clearHistory() {
+    history=[];
+    $("minValue").textContent="--.- cm";
+    $("avgValue").textContent="--.- cm";
+    $("maxValue").textContent="--.- cm";
+    $("normValue").textContent="0.000";
+    $("normFlag").textContent="WAITING FOR DATA";
+    $("normFlag").style.color="var(--amber)";
+    $("twinObj").style.left="30px";
+    $("twinFill").style.width="0%";
+    $("feedList").innerHTML='<div class="empty">Chart history cleared. New messages will appear here.</div>';
+    drawChart();
+    drawNormChart();
+    resetForecast();
+    fuzzyReset();
+    ccReset();
+    notify("Browser session history cleared.");
+  }
+
+  function redrawAll() { drawChart(); drawNormChart(); drawForecastChart(); drawGAChart(); renderFuzzy(); ccRender(); }
+
+  $("footerClock").textContent = "LOCAL TIME · " + new Date().toLocaleDateString();
+  window.addEventListener("resize", redrawAll);
+  updateFormulaText();
+  updateFcUI();
+  buildRuleTable();
+  redrawAll();
+  refreshJson(true);
+  setInterval(() => refreshJson(false), 1000);
+  setInterval(ccRender, 500);
+</script>
+</body>
+</html>
